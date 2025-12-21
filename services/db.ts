@@ -32,7 +32,7 @@ export const db = {
   addMaterial: (name: string, unit: string, initialStock: number = 0, date: string) => {
     const materials = db.getMaterials();
     const newMaterial: Material = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: Math.random().toString(36).slice(2, 11),
       name,
       unit,
       createdAt: new Date().toISOString()
@@ -40,24 +40,26 @@ export const db = {
     materials.push(newMaterial);
     localStorage.setItem(KEYS.MATERIALS, JSON.stringify(materials));
     
-    // 同时为当前日期初始化库存记录
+    // 初始化指定日期的库存记录
     const inventoryData = localStorage.getItem(KEYS.INVENTORY);
     let allLogs: DailyInventory[] = inventoryData ? JSON.parse(inventoryData) : [];
     
     const newRecord: DailyInventory = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: Math.random().toString(36).slice(2, 11),
       materialId: newMaterial.id,
       date,
       openingStock: initialStock,
       todayInbound: 0,
       workshopOutbound: 0,
       storeOutbound: 0,
-      remainingStock: initialStock // 初始剩余库存 = 期初
+      remainingStock: initialStock
     };
     allLogs.push(newRecord);
     localStorage.setItem(KEYS.INVENTORY, JSON.stringify(allLogs));
 
     db.logAction('CREATE', `新增物料: ${name} (${unit}), 初始库存: ${initialStock}`);
+    // 触发后续日期的级联更新（以防万一是在过去日期新增）
+    db.cascadeUpdate(newMaterial.id, date, initialStock);
     return newMaterial;
   },
 
@@ -97,7 +99,7 @@ export const db = {
     const data = localStorage.getItem(KEYS.INVENTORY);
     let allLogs: DailyInventory[] = data ? JSON.parse(data) : [];
     
-    // 实时计算：实时库存(期初) + 今日入库 - 车间出库 - 店面出库 = 今日剩余库存
+    // 实时计算剩余库存
     record.remainingStock = record.openingStock + record.todayInbound - record.workshopOutbound - record.storeOutbound;
 
     const index = allLogs.findIndex(l => l.materialId === record.materialId && l.date === record.date);
@@ -107,6 +109,45 @@ export const db = {
       allLogs.push(record);
     }
     localStorage.setItem(KEYS.INVENTORY, JSON.stringify(allLogs));
+
+    // 级联更新未来日期的期初库存
+    db.cascadeUpdate(record.materialId, record.date, record.remainingStock);
+  },
+
+  // 级联更新函数：当某日剩余库存改变，更新后续日期的期初库存
+  cascadeUpdate: (materialId: string, fromDate: string, newOpeningForNext: number) => {
+    const data = localStorage.getItem(KEYS.INVENTORY);
+    if (!data) return;
+    let allLogs: DailyInventory[] = JSON.parse(data);
+
+    // 获取该物料所有日期记录并排序
+    const sortedRecords = allLogs
+      .filter(l => l.materialId === materialId)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    let currentOpening = newOpeningForNext;
+    let modified = false;
+
+    sortedRecords.forEach(record => {
+      if (record.date > fromDate) {
+        const originalIndex = allLogs.findIndex(l => l.id === record.id);
+        if (originalIndex > -1) {
+          allLogs[originalIndex].openingStock = currentOpening;
+          allLogs[originalIndex].remainingStock = 
+            allLogs[originalIndex].openingStock + 
+            allLogs[originalIndex].todayInbound - 
+            allLogs[originalIndex].workshopOutbound - 
+            allLogs[originalIndex].storeOutbound;
+          
+          currentOpening = allLogs[originalIndex].remainingStock;
+          modified = true;
+        }
+      }
+    });
+
+    if (modified) {
+      localStorage.setItem(KEYS.INVENTORY, JSON.stringify(allLogs));
+    }
   },
 
   initializeDate: (date: string) => {
@@ -130,7 +171,7 @@ export const db = {
         }
 
         const newRecord: DailyInventory = {
-          id: Math.random().toString(36).substr(2, 9),
+          id: Math.random().toString(36).slice(2, 11),
           materialId: m.id,
           date,
           openingStock: opening,

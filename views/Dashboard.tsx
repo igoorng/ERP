@@ -1,7 +1,7 @@
 
 import React, { useMemo } from 'react';
 import { db } from '../services/db';
-import { Package, TrendingUp, TrendingDown, ShoppingBag, ArrowUpRight } from 'lucide-react';
+import { Package, TrendingUp, TrendingDown, ShoppingBag, AlertTriangle } from 'lucide-react';
 import { 
   BarChart, 
   Bar, 
@@ -22,19 +22,16 @@ const Dashboard: React.FC = () => {
     let totalIn = 0;
     let totalWorkshopOut = 0;
     let totalStoreOut = 0;
-    
     inventory.forEach(item => {
       totalIn += item.todayInbound;
       totalWorkshopOut += item.workshopOutbound;
       totalStoreOut += item.storeOutbound;
     });
-
     return {
       totalMaterials: materials.length,
       totalIn,
       totalWorkshopOut,
       totalStoreOut,
-      lowStock: inventory.filter(i => i.remainingStock < 10).length
     };
   }, [materials, inventory]);
 
@@ -42,60 +39,40 @@ const Dashboard: React.FC = () => {
     return inventory.slice(0, 8).map(item => {
       const mat = materials.find(m => m.id === item.materialId);
       return {
-        name: mat?.name || 'Unknown',
+        name: mat?.name.slice(0, 6) || '??',
         remaining: item.remainingStock,
-        inbound: item.todayInbound
       };
     });
   }, [materials, inventory]);
 
   return (
-    <div className="space-y-6">
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard 
-          label="物料总数 Total Materials" 
-          value={stats.totalMaterials} 
-          icon={<Package className="text-blue-500" />} 
-          bgColor="bg-blue-50"
-        />
-        <StatCard 
-          label="今日入库 Today Inbound" 
-          value={stats.totalIn} 
-          icon={<TrendingUp className="text-green-500" />} 
-          bgColor="bg-green-50"
-        />
-        <StatCard 
-          label="车间出库 Workshop Out" 
-          value={stats.totalWorkshopOut} 
-          icon={<TrendingDown className="text-orange-500" />} 
-          bgColor="bg-orange-50"
-        />
-        <StatCard 
-          label="店面出库 Store Out" 
-          value={stats.totalStoreOut} 
-          icon={<ShoppingBag className="text-purple-500" />} 
-          bgColor="bg-purple-50"
-        />
+    <div className="space-y-6 animate-in fade-in duration-700">
+      {/* Stat Cards - Better Grid for Mobile */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
+        <StatCard label="总品种" value={stats.totalMaterials} icon={<Package size={20}/>} color="blue" />
+        <StatCard label="今入库" value={stats.totalIn} icon={<TrendingUp size={20}/>} color="green" />
+        <StatCard label="车间出" value={stats.totalWorkshopOut} icon={<TrendingDown size={20}/>} color="orange" />
+        <StatCard label="店面出" value={stats.totalStoreOut} icon={<ShoppingBag size={20}/>} color="purple" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Chart */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        {/* Chart Card */}
+        <div className="lg:col-span-2 bg-white p-4 lg:p-6 rounded-2xl shadow-sm border border-gray-100">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-gray-800">库存概况 Stock Overview (Top 8)</h3>
-            <span className="text-xs font-medium px-2 py-1 bg-gray-100 text-gray-600 rounded-full">Today</span>
+            <h3 className="font-black text-gray-900 tracking-tight">前8项库存趋势</h3>
+            <span className="text-[10px] font-bold px-2 py-1 bg-blue-50 text-blue-600 rounded-full">REALTIME</span>
           </div>
-          <div className="h-80 w-full">
+          <div className="h-64 sm:h-80 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" />
-                <YAxis />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 600}} />
+                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10}} />
                 <Tooltip 
-                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  cursor={{fill: '#f8fafc'}}
+                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                 />
-                <Bar dataKey="remaining" radius={[4, 4, 0, 0]} name="剩余库存 Remaining">
+                <Bar dataKey="remaining" radius={[6, 6, 0, 0]} barSize={30}>
                   {chartData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.remaining < 10 ? '#ef4444' : '#3b82f6'} />
                   ))}
@@ -106,22 +83,30 @@ const Dashboard: React.FC = () => {
         </div>
 
         {/* Low Stock Alerts */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <h3 className="text-lg font-bold text-gray-800 mb-6">库存预警 Low Stock Alerts</h3>
-          <div className="space-y-4">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+          <h3 className="font-black text-gray-900 mb-6 flex items-center">
+            <AlertTriangle size={18} className="mr-2 text-red-500" />
+            缺料预警
+          </h3>
+          <div className="space-y-3">
             {inventory.filter(i => i.remainingStock < 10).length === 0 ? (
-              <p className="text-gray-500 text-sm text-center py-10">No low stock items today.</p>
+              <div className="text-center py-10">
+                <div className="w-12 h-12 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <Package size={24} />
+                </div>
+                <p className="text-sm text-gray-400 font-medium">当前无缺料项目</p>
+              </div>
             ) : (
               inventory.filter(i => i.remainingStock < 10).map(item => {
                 const mat = materials.find(m => m.id === item.materialId);
                 return (
-                  <div key={item.id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-100">
+                  <div key={item.id} className="flex items-center justify-between p-4 bg-red-50/50 rounded-2xl border border-red-100">
                     <div>
-                      <p className="font-semibold text-red-900">{mat?.name}</p>
-                      <p className="text-xs text-red-600">剩余: {item.remainingStock} {mat?.unit}</p>
+                      <p className="font-bold text-red-900 leading-none mb-1">{mat?.name}</p>
+                      <p className="text-[10px] font-bold text-red-600 uppercase">剩 {item.remainingStock} {mat?.unit}</p>
                     </div>
-                    <div className="text-red-500">
-                      <AlertCircle size={20} />
+                    <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-red-500 shadow-sm">
+                      <ChevronRight size={16} />
                     </div>
                   </div>
                 );
@@ -134,23 +119,25 @@ const Dashboard: React.FC = () => {
   );
 };
 
-const StatCard = ({ label, value, icon, bgColor }: any) => (
-  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-start justify-between">
-    <div>
-      <p className="text-sm font-medium text-gray-500 mb-1">{label}</p>
-      <h4 className="text-2xl font-bold text-gray-900">{value}</h4>
+const StatCard = ({ label, value, icon, color }: any) => {
+  const colors: any = {
+    blue: 'bg-blue-50 text-blue-600',
+    green: 'bg-green-50 text-green-600',
+    orange: 'bg-orange-50 text-orange-600',
+    purple: 'bg-purple-50 text-purple-600'
+  };
+  return (
+    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center text-center">
+      <div className={`p-2.5 rounded-xl mb-3 ${colors[color]}`}>{icon}</div>
+      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter mb-1">{label}</p>
+      <h4 className="text-lg font-black text-gray-900">{value}</h4>
     </div>
-    <div className={`p-3 rounded-xl ${bgColor}`}>
-      {icon}
-    </div>
-  </div>
-);
+  );
+};
 
-const AlertCircle = ({ size }: { size: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10" />
-    <line x1="12" y1="8" x2="12" y2="12" />
-    <line x1="12" y1="16" x2="12.01" y2="16" />
+const ChevronRight = ({ size, className }: any) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="m9 18 6-6-6-6" />
   </svg>
 );
 

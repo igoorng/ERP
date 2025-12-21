@@ -22,7 +22,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     if (username === envUser && password === envPass) {
       onLoginSuccess({ id: '1', username: envUser, role: 'admin' });
     } else {
-      setError('用户名或密码输入错误！');
+      setError('用户名或密码错误。如果您修改了 .env 文件，请确保配置已生效。');
     }
   };
 
@@ -31,8 +31,8 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       <div className="max-w-md w-full">
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
           <div className="bg-blue-600 p-8 text-center text-white">
-            <h1 className="text-3xl font-bold">物料管理系统</h1>
-            <p className="mt-2 opacity-80 text-sm"></p>
+            <h1 className="text-3xl font-bold">MaterialFlow</h1>
+            <p className="mt-2 opacity-80 text-sm">物料管理系统登录</p>
           </div>
           
           <form onSubmit={handleLogin} className="p-8 space-y-6">
@@ -44,7 +44,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">用户名</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">用户名 Username</label>
               <div className="relative">
                 <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                 <input
@@ -59,7 +59,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">密码</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">密码 Password</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                 <input
