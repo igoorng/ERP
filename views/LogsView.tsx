@@ -1,10 +1,21 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from '../services/db';
 import { History, User as UserIcon, Activity } from 'lucide-react';
+import { AuditLog } from '../types';
 
 const LogsView: React.FC = () => {
-  const logs = db.getLogs();
+  // Fixed: changed logs to a state variable and initialized it as an empty array
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+
+  // Fixed: added useEffect to fetch logs asynchronously on mount
+  useEffect(() => {
+    const fetchLogs = async () => {
+      const data = await db.getLogs();
+      setLogs(data);
+    };
+    fetchLogs();
+  }, []);
 
   const getActionColor = (action: string) => {
     switch (action) {

@@ -16,9 +16,13 @@ const StatisticsView: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statsData, setStatsData] = useState<any[]>([]);
 
+  // Fixed: added async/await to the effect callback
   useEffect(() => {
-    const data = db.getAggregatedStatistics(startDate, endDate);
-    setStatsData(data);
+    const fetchData = async () => {
+      const data = await db.getAggregatedStatistics(startDate, endDate);
+      setStatsData(data);
+    };
+    fetchData();
   }, [startDate, endDate]);
 
   const filteredStats = useMemo(() => {

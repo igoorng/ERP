@@ -34,15 +34,17 @@ const ReportsView: React.FC = () => {
     }
   };
 
-  const exportDailyData = () => {
+  // Fixed: added async keyword to the function
+  const exportDailyData = async () => {
     // 额外校验：防止手动输入绕过 UI 限制
     if (date > maxDate) {
       alert("无法导出未来日期的报表");
       return;
     }
 
-    const materials = db.getMaterials();
-    const inventory = db.getInventoryForDate(date);
+    // Fixed: added await to resolve Promises returned by db calls
+    const materials = await db.getMaterials();
+    const inventory = await db.getInventoryForDate(date);
     
     const exportData = inventory.map(item => {
       const mat = materials.find(m => m.id === item.materialId);
