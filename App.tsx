@@ -9,12 +9,12 @@ import ReportsView from './views/ReportsView';
 import LogsView from './views/LogsView';
 import Login from './views/Login';
 import StatisticsView from './views/StatisticsView';
+import SettingsView from './views/SettingsView';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(db.getCurrentUser());
   const [currentView, setCurrentView] = useState<ViewMode>(ViewMode.DASHBOARD);
 
-  // Persistence for view mode session
   useEffect(() => {
     const savedView = localStorage.getItem('mf_pro_current_view') as ViewMode;
     if (savedView && Object.values(ViewMode).includes(savedView)) {
@@ -53,6 +53,8 @@ const App: React.FC = () => {
         return <ReportsView />;
       case ViewMode.LOGS:
         return <LogsView />;
+      case ViewMode.SETTINGS:
+        return <SettingsView />;
       default:
         return <Dashboard />;
     }

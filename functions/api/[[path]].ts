@@ -15,6 +15,14 @@ export const onRequest: any = async (context: any) => {
       headers: { 'Content-Type': 'application/json' } 
     });
 
+  // 安全检查：确保 DB 绑定存在
+  if (!env.DB) {
+    return json({ 
+      error: 'D1 Database binding missing. 请检查 Cloudflare 控制台中的 D1 绑定设置 (Variable Name 必须为 DB)。',
+      code: 'DATABASE_BINDING_MISSING'
+    }, 500);
+  }
+
   try {
     // 1. 身份验证 & 初始化
     if (path === '/auth/login' && method === 'POST') {
@@ -33,10 +41,13 @@ export const onRequest: any = async (context: any) => {
       }
       
       // 初始化默认设置
-      const settingsCount = await env.DB.prepare("SELECT COUNT(*) as count FROM settings").first();
-      if (settingsCount.count === 0) {
-        await env.DB.prepare("INSERT INTO settings (key, value) VALUES (?, ?), (?, ?)")
-          .bind('LOW_STOCK_THRESHOLD', '10', 'SYSTEM_NAME', 'MaterialFlow Pro').run();
+      const settingsTableExists = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'").first();
+      if (settingsTableExists) {
+        const settingsCount = await env.DB.prepare("SELECT COUNT(*) as count FROM settings").first();
+        if (settingsCount.count === 0) {
+          await env.DB.prepare("INSERT INTO settings (key, value) VALUES (?, ?), (?, ?)")
+            .bind('LOW_STOCK_THRESHOLD', '10', 'SYSTEM_NAME', 'MaterialFlow Pro').run();
+        }
       }
       
       return json({ message: 'Success' });
@@ -45,7 +56,6 @@ export const onRequest: any = async (context: any) => {
     // 2. 系统设置 (Settings)
     if (path === '/settings' && method === 'GET') {
       const { results } = await env.DB.prepare("SELECT * FROM settings").all();
-      // 将 [{key: 'A', value: 'B'}] 转为 {A: 'B'}
       const settingsMap = results.reduce((acc: any, curr: any) => {
         acc[curr.key] = curr.value;
         return acc;

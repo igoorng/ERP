@@ -9,7 +9,8 @@ import {
   LogOut,
   Menu,
   X,
-  BarChart3
+  BarChart3,
+  Settings
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -29,6 +30,7 @@ const Layout: React.FC<LayoutProps> = ({ user, currentView, setView, onLogout, c
     { id: ViewMode.STATISTICS, label: '数据统计 Statistics', icon: BarChart3 },
     { id: ViewMode.REPORTS, label: '报表导出 Reports', icon: FileText },
     { id: ViewMode.LOGS, label: '操作日志 Logs', icon: History },
+    { id: ViewMode.SETTINGS, label: '系统设置 Settings', icon: Settings },
   ];
 
   const handleNavClick = (view: ViewMode) => {
