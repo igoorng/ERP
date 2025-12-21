@@ -17,7 +17,8 @@ interface CacheItem<T> {
 
 class DataCache {
   private cache = new Map<string, CacheItem<any>>();
-  private readonly DEFAULT_TTL = 5 * 60 * 1000; // 5分钟缓存
+  private readonly DEFAULT_TTL = 30 * 60 * 1000; // 30分钟缓存（延长缓存时间）
+  private readonly STATIC_DATA_TTL = 2 * 60 * 60 * 1000; // 静态数据2小时缓存
 
   set<T>(key: string, data: T, ttl: number = this.DEFAULT_TTL): void {
     this.cache.set(key, {
@@ -25,6 +26,11 @@ class DataCache {
       timestamp: Date.now(),
       expiry: Date.now() + ttl
     });
+  }
+
+  // 为静态数据设置更长的缓存时间
+  setStatic<T>(key: string, data: T): void {
+    this.set(key, data, this.STATIC_DATA_TTL);
   }
 
   get<T>(key: string): T | null {
@@ -62,6 +68,26 @@ const dataCache = new DataCache();
 
 // 定期清理过期缓存
 setInterval(() => dataCache.cleanup(), 60000); // 每分钟清理一次
+
+// 缓存预热功能
+export const preloadCommonData = async (): Promise<void> => {
+  try {
+    const today = db.getBeijingDate();
+    
+    // 预加载今天的物料数据（静态数据，2小时缓存）
+    await db.getMaterials(today, false);
+    
+    // 预加载前几页的分页数据
+    await Promise.all([
+      db.getMaterialsPaginated(1, 50, today, '', false),
+      db.getInventoryForDatePaginated(today, 1, 50, '', false)
+    ]);
+    
+    console.log('缓存预热完成');
+  } catch (error) {
+    console.log('缓存预热失败:', error);
+  }
+};
 
 export const db = {
   // --- Time Utilities ---
@@ -197,6 +223,15 @@ export const db = {
     dataCache.delete(`materials_${date}`);
     dataCache.delete('materials_current');
     dataCache.delete(`inventory_${date}`);
+    
+    // 清除分页缓存（使用模糊匹配）
+    const keysToDelete: string[] = [];
+    for (const key of dataCache['cache'].keys()) {
+      if (key.includes('materials_paginated_') || key.includes('inventory_paginated_')) {
+        keysToDelete.push(key);
+      }
+    }
+    keysToDelete.forEach(key => dataCache.delete(key));
   },
 
   // --- Materials ---
@@ -215,6 +250,42 @@ export const db = {
       const ts = db.getBeijingDayEndTimestamp(date);
       url += `?timestamp=${ts}`;
     }
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    // 缓存数据
+    dataCache.set(cacheKey, data);
+    return data;
+  },
+
+  // 分页获取物料
+  getMaterialsPaginated: async (page: number = 1, pageSize: number = 50, date?: string, searchTerm?: string, forceRefresh: boolean = false): Promise<{materials: Material[], total: number, hasMore: boolean}> => {
+    const cacheKey = `materials_paginated_${page}_${pageSize}_${date || 'current'}_${searchTerm || ''}`;
+    
+    // 尝试从缓存获取数据
+    if (!forceRefresh) {
+      const cached = dataCache.get<{materials: Material[], total: number, hasMore: boolean}>(cacheKey);
+      if (cached) return cached;
+    }
+    
+    // 构建查询参数
+    const params = new URLSearchParams({
+      page: page.toString(),
+      pageSize: pageSize.toString()
+    });
+    
+    if (date) {
+      params.append('date', date);
+      const ts = db.getBeijingDayEndTimestamp(date);
+      params.append('timestamp', ts.toString());
+    }
+    
+    if (searchTerm) {
+      params.append('search', searchTerm);
+    }
+    
+    // 从服务器获取数据
+    const url = `${API_BASE}/materials/paginated?${params.toString()}`;
     const response = await fetch(url);
     const data = await response.json();
     
@@ -279,6 +350,37 @@ export const db = {
     
     // 从服务器获取数据
     const response = await fetch(`${API_BASE}/inventory?date=${date}&timestamp=${Date.now()}`);
+    const data = await response.json();
+    
+    // 缓存数据
+    dataCache.set(cacheKey, data);
+    return data;
+  },
+
+  // 分页获取库存数据
+  getInventoryForDatePaginated: async (date: string, page: number = 1, pageSize: number = 50, searchTerm?: string, forceRefresh: boolean = false): Promise<{inventory: DailyInventory[], total: number, hasMore: boolean}> => {
+    const cacheKey = `inventory_paginated_${date}_${page}_${pageSize}_${searchTerm || ''}`;
+    
+    // 尝试从缓存获取数据
+    if (!forceRefresh) {
+      const cached = dataCache.get<{inventory: DailyInventory[], total: number, hasMore: boolean}>(cacheKey);
+      if (cached) return cached;
+    }
+    
+    // 构建查询参数
+    const params = new URLSearchParams({
+      date,
+      page: page.toString(),
+      pageSize: pageSize.toString()
+    });
+    
+    if (searchTerm) {
+      params.append('search', searchTerm);
+    }
+    
+    // 从服务器获取数据
+    const url = `${API_BASE}/inventory/paginated?${params.toString()}`;
+    const response = await fetch(url);
     const data = await response.json();
     
     // 缓存数据

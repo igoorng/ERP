@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { db } from './services/db';
+import { db, preloadCommonData } from './services/db';
 import { User, ViewMode } from './types';
 import Layout from './components/Layout';
 import Dashboard from './views/Dashboard';
@@ -20,6 +20,9 @@ const App: React.FC = () => {
     if (savedView && Object.values(ViewMode).includes(savedView)) {
       setCurrentView(savedView);
     }
+    
+    // 启动时进行缓存预热
+    preloadCommonData();
   }, []);
 
   const handleSetView = (view: ViewMode) => {

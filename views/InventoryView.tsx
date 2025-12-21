@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from '../services/db';
 import { Material, DailyInventory } from '../types';
-import { Plus, Search, Trash2, X, Calculator, Calendar as CalendarIcon, Loader2, FileUp, Save, Lock, ArrowRight, CheckSquare, Square } from 'lucide-react';
+import { Plus, Search, Trash2, X, Calendar as CalendarIcon, Loader2, FileUp, ArrowRight, CheckSquare, Square } from 'lucide-react';
 
 declare const XLSX: any;
 
@@ -14,6 +14,12 @@ const InventoryView: React.FC = () => {
   const [inventory, setInventory] = useState<DailyInventory[]>([]);
   const [loading, setLoading] = useState(true);
   
+  // 分页状态
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(50); // 每页显示50条
+  const [totalItems, setTotalItems] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  
   // 批量选择状态
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   
@@ -21,19 +27,37 @@ const InventoryView: React.FC = () => {
   const [newMat, setNewMat] = useState({ name: '', unit: '', initialStock: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 预加载下一页的引用
+  const preloadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const isToday = useMemo(() => date === today, [date, today]);
 
-  const loadData = async () => {
+  const loadData = async (forceRefresh: boolean = false, page: number = 1, search: string = '') => {
     setLoading(true);
     try {
       await db.initializeDate(date);
-      const [mats, inv] = await Promise.all([
-        db.getMaterials(date),
-        db.getInventoryForDate(date)
+      
+      // 使用分页接口
+      const [matsData, invData] = await Promise.all([
+        db.getMaterialsPaginated(page, pageSize, date, search, forceRefresh),
+        db.getInventoryForDatePaginated(date, page, pageSize, search, forceRefresh)
       ]);
-      setMaterials(mats);
-      setInventory(inv);
-      setSelectedIds([]); // 加载新数据时清空选择
+      
+      setMaterials(matsData.materials);
+      setInventory(invData.inventory);
+      setTotalItems(matsData.total);
+      setHasMore(matsData.hasMore);
+      setCurrentPage(page);
+      
+      // 清空选择（如果是新页面或搜索）
+      if (page === 1 || search !== searchTerm) {
+        setSelectedIds([]);
+      }
+      
+      // 预加载下一页（如果还有更多数据）
+      if (matsData.hasMore && !forceRefresh) {
+        preloadNextPage(page + 1, search);
+      }
     } catch (error) {
       console.error("Failed to load data:", error);
     } finally {
@@ -41,16 +65,55 @@ const InventoryView: React.FC = () => {
     }
   };
 
+  // 预加载下一页数据
+  const preloadNextPage = async (nextPage: number, search: string) => {
+    // 清除之前的预加载定时器
+    if (preloadTimeoutRef.current) {
+      clearTimeout(preloadTimeoutRef.current);
+    }
+    
+    // 延迟2秒后预加载，避免频繁请求
+    preloadTimeoutRef.current = setTimeout(async () => {
+      try {
+        await Promise.all([
+          db.getMaterialsPaginated(nextPage, pageSize, date, search, false),
+          db.getInventoryForDatePaginated(date, nextPage, pageSize, search, false)
+        ]);
+        console.log(`预加载第${nextPage}页数据完成`);
+      } catch (error) {
+        console.log("预加载失败:", error);
+      }
+    }, 2000);
+  };
+
   useEffect(() => {
-    loadData();
+    setCurrentPage(1); // 切换日期时重置到第一页
+    loadData(false, 1, searchTerm);
   }, [date]);
 
+  // 搜索防抖
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setCurrentPage(1); // 搜索时重置到第一页
+      loadData(false, 1, searchTerm);
+    }, 300); // 300ms防抖
+
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm]);
+
+  // 清理预加载定时器
+  useEffect(() => {
+    return () => {
+      if (preloadTimeoutRef.current) {
+        clearTimeout(preloadTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // 移除客户端过滤，因为现在在服务器端过滤
   const filteredData = useMemo(() => {
-    return inventory.filter(item => {
-      const mat = materials.find(m => m.id === item.materialId);
-      return mat?.name.toLowerCase().includes(searchTerm.toLowerCase());
-    });
-  }, [inventory, materials, searchTerm]);
+    return inventory;
+  }, [inventory]);
 
   const handleInputChange = async (materialId: string, field: keyof DailyInventory, value: string) => {
     if (!isToday) return;
@@ -80,7 +143,7 @@ const InventoryView: React.FC = () => {
       await db.addMaterial(newMat.name, newMat.unit, newMat.initialStock, date);
       setIsAddModalOpen(false);
       setNewMat({ name: '', unit: '', initialStock: 0 });
-      await loadData();
+      await loadData(true, currentPage, searchTerm);
     } catch (e) {
       alert('添加失败');
     } finally {
@@ -93,7 +156,7 @@ const InventoryView: React.FC = () => {
     if (window.confirm(`确定要移除物料 "${name}" 吗？`)) {
       setLoading(true);
       await db.deleteMaterial(id, date);
-      await loadData();
+      await loadData(true, currentPage, searchTerm);
     }
   };
 
@@ -104,7 +167,7 @@ const InventoryView: React.FC = () => {
       try {
         await db.deleteMaterials(selectedIds, date);
         setSelectedIds([]);
-        await loadData();
+        await loadData(true, currentPage, searchTerm);
       } catch (e) {
         alert('批量删除失败');
       } finally {
@@ -147,7 +210,7 @@ const InventoryView: React.FC = () => {
           const stock = Number(row['昨日库存'] || row['昨日库存'] || 0);
           if (name && unit) await db.addMaterial(String(name), String(unit), stock, date);
         }
-        await loadData();
+        await loadData(true);
         if (fileInputRef.current) fileInputRef.current.value = '';
       } catch (err) {
         alert('导入失败');
@@ -217,7 +280,14 @@ const InventoryView: React.FC = () => {
       {loading ? (
         <div className="py-20 flex flex-col items-center justify-center text-gray-400">
           <Loader2 className="animate-spin mb-4" size={48} />
-          <p className="font-black text-sm uppercase">同步中...</p>
+          <p className="font-black text-sm uppercase">
+            {currentPage > 1 ? `加载第 ${currentPage} 页...` : '同步中...'}
+          </p>
+          {totalItems > 0 && (
+            <p className="text-xs mt-2 text-gray-400">
+              共 {totalItems} 条记录，每页显示 {pageSize} 条
+            </p>
+          )}
         </div>
       ) : (
         <div className="space-y-4">
@@ -308,6 +378,61 @@ const InventoryView: React.FC = () => {
               </tbody>
             </table>
           </div>
+
+          {/* 分页控件 - 桌面端 */}
+          {totalItems > pageSize && (
+            <div className="hidden lg:flex items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+              <div className="text-sm text-gray-500">
+                显示第 {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, totalItems)} 条，共 {totalItems} 条记录
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => loadData(false, currentPage - 1, searchTerm)}
+                  disabled={currentPage === 1}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-200 transition-colors"
+                >
+                  上一页
+                </button>
+                <div className="flex items-center space-x-1">
+                  {Array.from({ length: Math.min(5, Math.ceil(totalItems / pageSize)) }, (_, i) => {
+                    const pageNum = i + 1;
+                    const isActive = pageNum === currentPage;
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => loadData(false, pageNum, searchTerm)}
+                        className={`w-10 h-10 rounded-lg font-medium transition-colors ${
+                          isActive
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                  {Math.ceil(totalItems / pageSize) > 5 && (
+                    <>
+                      <span className="text-gray-400">...</span>
+                      <button
+                        onClick={() => loadData(false, Math.ceil(totalItems / pageSize), searchTerm)}
+                        className="w-10 h-10 rounded-lg font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                      >
+                        {Math.ceil(totalItems / pageSize)}
+                      </button>
+                    </>
+                  )}
+                </div>
+                <button
+                  onClick={() => loadData(false, currentPage + 1, searchTerm)}
+                  disabled={!hasMore}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors"
+                >
+                  下一页
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* 手机端卡片列表 */}
           <div className="grid grid-cols-1 gap-4 lg:hidden">
@@ -400,6 +525,61 @@ const InventoryView: React.FC = () => {
               );
             })}
           </div>
+
+          {/* 分页控件 - 移动端 */}
+          {totalItems > pageSize && (
+            <div className="lg:hidden bg-white p-4 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+              <div className="text-center text-sm text-gray-500">
+                显示第 {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, totalItems)} 条，共 {totalItems} 条
+              </div>
+              <div className="flex justify-center space-x-2">
+                <button
+                  onClick={() => loadData(false, currentPage - 1, searchTerm)}
+                  disabled={currentPage === 1}
+                  className="flex-1 max-w-24 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-200 transition-colors"
+                >
+                  上一页
+                </button>
+                <div className="flex items-center space-x-1">
+                  {Array.from({ length: Math.min(3, Math.ceil(totalItems / pageSize)) }, (_, i) => {
+                    const pageNum = i + 1;
+                    const isActive = pageNum === currentPage;
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => loadData(false, pageNum, searchTerm)}
+                        className={`w-12 h-12 rounded-xl font-medium transition-colors ${
+                          isActive
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                  {Math.ceil(totalItems / pageSize) > 3 && (
+                    <>
+                      <span className="text-gray-400 self-center">...</span>
+                      <button
+                        onClick={() => loadData(false, Math.ceil(totalItems / pageSize), searchTerm)}
+                        className="w-12 h-12 rounded-xl font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                      >
+                        {Math.ceil(totalItems / pageSize)}
+                      </button>
+                    </>
+                  )}
+                </div>
+                <button
+                  onClick={() => loadData(false, currentPage + 1, searchTerm)}
+                  disabled={!hasMore}
+                  className="flex-1 max-w-24 py-3 bg-blue-600 text-white rounded-xl font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors"
+                >
+                  下一页
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
