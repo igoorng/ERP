@@ -24,7 +24,7 @@ const LogsView: React.FC = () => {
         <div className="p-6 border-b border-gray-100 bg-gray-50/50">
           <h3 className="text-lg font-bold text-gray-800 flex items-center">
             <Activity className="mr-2 text-blue-500" size={20} />
-            操作历史记录 System Audit Logs
+            操作历史记录
           </h3>
           <p className="text-sm text-gray-500 mt-1">记录系统内所有的增删改查操作记录，用于追溯管理。</p>
         </div>

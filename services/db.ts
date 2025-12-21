@@ -24,12 +24,14 @@ async function hashPassword(password: string): Promise<string> {
 export const db = {
   // --- Time Utilities (Beijing Time UTC+8) ---
   getBeijingDate: (): string => {
-    return new Intl.DateTimeFormat('sv-SE', {
+    // 使用 en-CA 区域设置确保始终返回 YYYY-MM-DD 格式
+    const formatter = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Asia/Shanghai',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit'
-    }).format(new Date());
+    });
+    return formatter.format(new Date());
   },
 
   getBeijingTimeOnly: (): string => {
@@ -95,10 +97,6 @@ export const db = {
 
   /**
    * 获取特定日期可见的物料
-   * 逻辑：
-   * 1. 如果物料有 createdAt，则 date 必须 >= createdAt (之前的日期不显示)
-   * 2. 如果物料有 deletedAt，则 date 必须 <= deletedAt (删除之后的日期不显示，删除当天仍显示)
-   * 3. 兼容旧数据：如果没有字段，则默认通过
    */
   getMaterials: (date?: string): Material[] => {
     const materials = db.getAllMaterials();
@@ -107,48 +105,70 @@ export const db = {
     return materials.filter(m => {
       // 1. 创建日期判断：如果没有记录创建日期（旧数据），默认可见；否则必须在创建日期之后（含当天）
       const isCreated = !m.createdAt || m.createdAt <= date;
-      
       // 2. 删除日期判断：如果没有删除日期，可见；如果有删除日期，则必须在删除日期之前或当天
       const isNotDeletedYet = !m.deletedAt || date <= m.deletedAt;
-      
       return isCreated && isNotDeletedYet;
     });
   },
 
   addMaterial: (name: string, unit: string, initialStock: number = 0, date: string) => {
     const materials = db.getAllMaterials();
-    // 检查是否已有完全同名且未删除的
-    const existing = materials.find(m => m.name === name && !m.deletedAt);
-    if (existing) return existing;
-
-    const newMaterial: Material = {
-      id: Math.random().toString(36).slice(2, 11),
-      name,
-      unit,
-      createdAt: date
-    };
-    materials.push(newMaterial);
-    localStorage.setItem(KEYS.MATERIALS, JSON.stringify(materials));
-    
     const inventoryData = localStorage.getItem(KEYS.INVENTORY);
-    let allLogs: DailyInventory[] = inventoryData ? JSON.parse(inventoryData) : [];
-    
-    const newRecord: DailyInventory = {
-      id: Math.random().toString(36).slice(2, 11),
-      materialId: newMaterial.id,
-      date,
-      openingStock: initialStock,
-      todayInbound: 0,
-      workshopOutbound: 0,
-      storeOutbound: 0,
-      remainingStock: initialStock
-    };
-    allLogs.push(newRecord);
-    localStorage.setItem(KEYS.INVENTORY, JSON.stringify(allLogs));
+    let allInventory: DailyInventory[] = inventoryData ? JSON.parse(inventoryData) : [];
 
-    db.logAction('CREATE', `新增物料: ${name}, 日期: ${date}`);
-    db.cascadeUpdate(newMaterial.id, date, initialStock);
-    return newMaterial;
+    // 查找是否已存在同名且未删除物料
+    let mat = materials.find(m => m.name === name && !m.deletedAt);
+    
+    if (!mat) {
+      // 新作物料
+      mat = {
+        id: Math.random().toString(36).slice(2, 11),
+        name,
+        unit,
+        createdAt: date
+      };
+      materials.push(mat);
+      localStorage.setItem(KEYS.MATERIALS, JSON.stringify(materials));
+      db.logAction('CREATE', `新增物料: ${name}, 单位: ${unit}, 昨日库存: ${initialStock}`);
+    } else {
+      // 如果物料已存在，但在旧版本中可能没有 createdAt，这里补全
+      if (!mat.createdAt) {
+        mat.createdAt = date;
+        localStorage.setItem(KEYS.MATERIALS, JSON.stringify(materials));
+      }
+      db.logAction('IMPORT', `更新/补录现有物料: ${name}, 设置初始库存: ${initialStock}`);
+    }
+
+    // 核心修复：无论物料是否已存在，确保在“今日”有一条库存记录
+    const existingRecordIndex = allInventory.findIndex(l => l.materialId === mat!.id && l.date === date);
+    
+    if (existingRecordIndex === -1) {
+      const newRecord: DailyInventory = {
+        id: Math.random().toString(36).slice(2, 11),
+        materialId: mat.id,
+        date,
+        openingStock: initialStock,
+        todayInbound: 0,
+        workshopOutbound: 0,
+        storeOutbound: 0,
+        remainingStock: initialStock
+      };
+      allInventory.push(newRecord);
+      localStorage.setItem(KEYS.INVENTORY, JSON.stringify(allInventory));
+      
+      // 触发后续日期的级联更新
+      db.cascadeUpdate(mat.id, date, initialStock);
+    } else {
+      // 如果已存在记录且是导入操作，可能需要更新初始库存
+      if (initialStock !== allInventory[existingRecordIndex].openingStock) {
+        allInventory[existingRecordIndex].openingStock = initialStock;
+        allInventory[existingRecordIndex].remainingStock = initialStock + allInventory[existingRecordIndex].todayInbound - allInventory[existingRecordIndex].workshopOutbound - allInventory[existingRecordIndex].storeOutbound;
+        localStorage.setItem(KEYS.INVENTORY, JSON.stringify(allInventory));
+        db.cascadeUpdate(mat.id, date, allInventory[existingRecordIndex].remainingStock);
+      }
+    }
+
+    return mat;
   },
 
   deleteMaterials: (ids: string[], date: string) => {
