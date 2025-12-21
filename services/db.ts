@@ -29,7 +29,7 @@ export const db = {
     return data ? JSON.parse(data) : [];
   },
 
-  addMaterial: (name: string, unit: string) => {
+  addMaterial: (name: string, unit: string, initialStock: number = 0, date: string) => {
     const materials = db.getMaterials();
     const newMaterial: Material = {
       id: Math.random().toString(36).substr(2, 9),
@@ -39,7 +39,25 @@ export const db = {
     };
     materials.push(newMaterial);
     localStorage.setItem(KEYS.MATERIALS, JSON.stringify(materials));
-    db.logAction('CREATE', `新增物料: ${name} (${unit})`);
+    
+    // 同时为当前日期初始化库存记录
+    const inventoryData = localStorage.getItem(KEYS.INVENTORY);
+    let allLogs: DailyInventory[] = inventoryData ? JSON.parse(inventoryData) : [];
+    
+    const newRecord: DailyInventory = {
+      id: Math.random().toString(36).substr(2, 9),
+      materialId: newMaterial.id,
+      date,
+      openingStock: initialStock,
+      todayInbound: 0,
+      workshopOutbound: 0,
+      storeOutbound: 0,
+      remainingStock: initialStock // 初始剩余库存 = 期初
+    };
+    allLogs.push(newRecord);
+    localStorage.setItem(KEYS.INVENTORY, JSON.stringify(allLogs));
+
+    db.logAction('CREATE', `新增物料: ${name} (${unit}), 初始库存: ${initialStock}`);
     return newMaterial;
   },
 
@@ -79,7 +97,7 @@ export const db = {
     const data = localStorage.getItem(KEYS.INVENTORY);
     let allLogs: DailyInventory[] = data ? JSON.parse(data) : [];
     
-    // 实时计算：实时库存 + 今日入库 - 车间出库 - 店面出库 = 今日剩余库存
+    // 实时计算：实时库存(期初) + 今日入库 - 车间出库 - 店面出库 = 今日剩余库存
     record.remainingStock = record.openingStock + record.todayInbound - record.workshopOutbound - record.storeOutbound;
 
     const index = allLogs.findIndex(l => l.materialId === record.materialId && l.date === record.date);
