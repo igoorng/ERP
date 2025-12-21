@@ -265,13 +265,34 @@ const InventoryView: React.FC = () => {
                       </td>
                       <td className="px-6 py-5 text-center font-mono font-black text-gray-400">{item.openingStock}</td>
                       <td className="px-6 py-5 text-center">
-                        <input type="number" disabled={!isToday} value={item.todayInbound} onChange={(e) => handleInputChange(item.materialId, 'todayInbound', e.target.value)} className="w-20 px-2 py-2 bg-blue-50/50 rounded-lg text-center font-bold" />
+                        <input 
+                          type="number" 
+                          disabled={!isToday} 
+                          value={item.todayInbound || ''} 
+                          placeholder="0"
+                          onChange={(e) => handleInputChange(item.materialId, 'todayInbound', e.target.value)} 
+                          className="w-20 px-2 py-2 bg-blue-50/50 rounded-lg text-center font-bold" 
+                        />
                       </td>
                       <td className="px-6 py-5 text-center">
-                        <input type="number" disabled={!isToday} value={item.workshopOutbound} onChange={(e) => handleInputChange(item.materialId, 'workshopOutbound', e.target.value)} className="w-20 px-2 py-2 bg-orange-50/50 rounded-lg text-center font-bold" />
+                        <input 
+                          type="number" 
+                          disabled={!isToday} 
+                          value={item.workshopOutbound || ''} 
+                          placeholder="0"
+                          onChange={(e) => handleInputChange(item.materialId, 'workshopOutbound', e.target.value)} 
+                          className="w-20 px-2 py-2 bg-orange-50/50 rounded-lg text-center font-bold" 
+                        />
                       </td>
                       <td className="px-6 py-5 text-center">
-                        <input type="number" disabled={!isToday} value={item.storeOutbound} onChange={(e) => handleInputChange(item.materialId, 'storeOutbound', e.target.value)} className="w-20 px-2 py-2 bg-purple-50/50 rounded-lg text-center font-bold" />
+                        <input 
+                          type="number" 
+                          disabled={!isToday} 
+                          value={item.storeOutbound || ''} 
+                          placeholder="0"
+                          onChange={(e) => handleInputChange(item.materialId, 'storeOutbound', e.target.value)} 
+                          className="w-20 px-2 py-2 bg-purple-50/50 rounded-lg text-center font-bold" 
+                        />
                       </td>
                       <td className="px-8 py-5 text-center font-black text-blue-900 bg-blue-50/20 text-xl">{item.remainingStock}</td>
                       <td className="px-6 py-5">
@@ -334,7 +355,8 @@ const InventoryView: React.FC = () => {
                       <input
                         type="number"
                         disabled={!isToday}
-                        value={item.todayInbound}
+                        value={item.todayInbound || ''}
+                        placeholder="0"
                         onChange={(e) => handleInputChange(item.materialId, 'todayInbound', e.target.value)}
                         className="w-full py-3 bg-blue-50/50 rounded-xl text-center font-black text-blue-700 border-none outline-none focus:ring-2 focus:ring-blue-500"
                       />
@@ -344,7 +366,8 @@ const InventoryView: React.FC = () => {
                       <input
                         type="number"
                         disabled={!isToday}
-                        value={item.workshopOutbound}
+                        value={item.workshopOutbound || ''}
+                        placeholder="0"
                         onChange={(e) => handleInputChange(item.materialId, 'workshopOutbound', e.target.value)}
                         className="w-full py-3 bg-orange-50/50 rounded-xl text-center font-black text-orange-700 border-none outline-none focus:ring-2 focus:ring-orange-500"
                       />
@@ -354,7 +377,8 @@ const InventoryView: React.FC = () => {
                       <input
                         type="number"
                         disabled={!isToday}
-                        value={item.storeOutbound}
+                        value={item.storeOutbound || ''}
+                        placeholder="0"
                         onChange={(e) => handleInputChange(item.materialId, 'storeOutbound', e.target.value)}
                         className="w-full py-3 bg-purple-50/50 rounded-xl text-center font-black text-purple-700 border-none outline-none focus:ring-2 focus:ring-purple-500"
                       />
