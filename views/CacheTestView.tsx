@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { performanceMonitor } from '../services/monitoring';
 import { db } from '../services/db';
@@ -68,7 +69,8 @@ const CacheTestView: React.FC = () => {
 
   const clearCache = async () => {
     try {
-      await db.clearCache();
+      // Fix: Use the correct method name from db service
+      await db.clearRemoteCache();
       setTestResults(['🧹 缓存已清除']);
       updateMetrics();
     } catch (error) {
