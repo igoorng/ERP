@@ -8,7 +8,6 @@ import { Plus, Search, Upload, Trash2, X, CheckSquare, Square, Calculator, Calen
 declare const XLSX: any;
 
 const InventoryView: React.FC = () => {
-  // 核心：初始日期使用北京时间
   const [date, setDate] = useState(db.getBeijingDate());
   const [searchTerm, setSearchTerm] = useState('');
   const [materials, setMaterials] = useState<Material[]>([]);
@@ -16,10 +15,8 @@ const InventoryView: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  // 权限判断：当前选中的日期是否为北京时间的“今天”
   const isToday = useMemo(() => date === db.getBeijingDate(), [date]);
 
-  // 动态同步北京日期：防止跨天时系统时间不更新
   useEffect(() => {
     const interval = setInterval(() => {
       const currentBeijingDate = db.getBeijingDate();
@@ -32,17 +29,17 @@ const InventoryView: React.FC = () => {
   }, [date, isToday]);
 
   const loadData = () => {
-    // 1. 先初始化该日期的库存槽位
+    // 1. 初始化库存槽位
     db.initializeDate(date);
     
-    // 2. 获取该日期可见的物料定义
+    // 2. 获取可见物料
     const mats = db.getMaterials(date);
     setMaterials(mats);
     
-    // 3. 获取该日期的所有库存记录
+    // 3. 获取所有记录
     const dailyInv = db.getInventoryForDate(date);
     
-    // 4. 仅保留在物料定义中可见（未在该日期前删除、已在该日期后创建）的记录
+    // 4. 过滤列表
     const visibleMatIds = new Set(mats.map(m => m.id));
     const filteredInv = dailyInv.filter(item => visibleMatIds.has(item.materialId));
     
@@ -84,9 +81,9 @@ const InventoryView: React.FC = () => {
       alert("历史数据已被锁定，无法删除。");
       return;
     }
-    if (window.confirm(`确定要删除物料 "${name}" 吗？删除后该物料将从明天的库存列表中消失，但今日及历史记录仍保留。`)) {
+    if (window.confirm(`确定要删除物料 "${name}" 吗？删除后该物料将立即从今日列表中消失。`)) {
       db.deleteMaterial(id, date);
-      loadData();
+      loadData(); // 立即重新加载，触发可见性过滤
     }
   };
 
@@ -155,7 +152,7 @@ const InventoryView: React.FC = () => {
           }
         });
         
-        loadData();
+        loadData(); // 导入后强制刷新 UI
         db.logAction('IMPORT', `从 Excel 批量导入了 ${count} 条物料数据`);
         alert(`成功导入 ${count} 条数据`);
       } catch (err) {
@@ -169,7 +166,6 @@ const InventoryView: React.FC = () => {
 
   return (
     <div className="space-y-4 pb-16 lg:pb-0">
-      {/* Header with Search and Actions */}
       <div className="bg-white p-3 lg:p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col lg:flex-row items-stretch lg:items-center gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
@@ -183,7 +179,6 @@ const InventoryView: React.FC = () => {
         </div>
         
         <div className="flex items-center space-x-2">
-          {/* Date Picker with Today Indicator */}
           <div className="flex-1 lg:flex-none relative group">
              <div className={`absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none ${isToday ? 'text-blue-500' : 'text-amber-500'}`}>
                 {isToday ? <CalendarIcon size={16} /> : <Lock size={16} />}
@@ -219,15 +214,13 @@ const InventoryView: React.FC = () => {
         </div>
       </div>
 
-      {/* Read-only Notice */}
       {!isToday && (
         <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl flex items-center space-x-3 text-amber-800 animate-in slide-in-from-top duration-300">
            <Lock size={18} className="flex-shrink-0" />
-           <p className="text-sm font-bold">您正在查看历史数据 ({date})。根据系统规则，只有北京时间当天的库存数据允许修改。此外，该日期尚未创建或已被删除的物料将不会显示。</p>
+           <p className="text-sm font-bold">您正在查看历史数据 ({date})。根据系统规则，只有北京时间当天的库存数据允许修改。此外，该日期已删除的物料不会显示。</p>
         </div>
       )}
 
-      {/* Batch Actions Bar */}
       {selectedIds.size > 0 && isToday && (
         <div className="bg-white p-3 rounded-xl border border-red-100 flex items-center justify-between animate-in slide-in-from-top duration-300 shadow-sm">
           <div className="flex items-center">
@@ -245,7 +238,6 @@ const InventoryView: React.FC = () => {
         </div>
       )}
 
-      {/* Desktop Table View */}
       <div className="hidden lg:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <table className="w-full text-left">
           <thead className="bg-gray-50 border-b border-gray-100">
@@ -272,7 +264,7 @@ const InventoryView: React.FC = () => {
                     <Calculator size={48} className="mb-4 opacity-10" />
                     <p className="font-bold">该日期暂无可见数据</p>
                     <p className="text-xs mt-1 max-w-xs mx-auto">
-                      提示：系统仅显示该日期已创建且未被删除的物料。如果您刚新增了物料，请确保日期选择的是“今天”。
+                      提示：系统仅显示该日期已创建且未被删除的物料。如果刚刚导入了数据，请检查日期选择是否正确。
                     </p>
                   </div>
                 </td>
@@ -345,7 +337,6 @@ const InventoryView: React.FC = () => {
         </table>
       </div>
 
-      {/* Mobile View Card */}
       <div className="lg:hidden space-y-4">
         {filteredData.length === 0 ? (
           <div className="py-20 text-center text-gray-400">
@@ -437,7 +428,6 @@ const InventoryView: React.FC = () => {
         )}
       </div>
 
-      {/* Floating Action Button (Mobile) - Only visible when today */}
       {isToday && (
         <button
           onClick={() => setIsAddModalOpen(true)}
@@ -448,7 +438,6 @@ const InventoryView: React.FC = () => {
         </button>
       )}
 
-      {/* Add Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-t-[3rem] sm:rounded-3xl shadow-2xl w-full max-w-md overflow-hidden transform animate-in slide-in-from-bottom duration-300">

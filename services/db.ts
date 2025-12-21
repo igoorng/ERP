@@ -24,14 +24,14 @@ async function hashPassword(password: string): Promise<string> {
 export const db = {
   // --- Time Utilities (Beijing Time UTC+8) ---
   getBeijingDate: (): string => {
-    // 使用 en-CA 区域设置确保始终返回 YYYY-MM-DD 格式
-    const formatter = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    });
-    return formatter.format(new Date());
+    // 强制输出 YYYY-MM-DD 格式，避免 / 分隔符干扰
+    const now = new Date();
+    const offset = 8 * 60; // Beijing is UTC+8
+    const beijingTime = new Date(now.getTime() + (now.getTimezoneOffset() + offset) * 60000);
+    const year = beijingTime.getFullYear();
+    const month = String(beijingTime.getMonth() + 1).padStart(2, '0');
+    const day = String(beijingTime.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   },
 
   getBeijingTimeOnly: (): string => {
@@ -97,75 +97,78 @@ export const db = {
 
   /**
    * 获取特定日期可见的物料
+   * 逻辑修改：
+   * 1. 如果物料有 createdAt，则 date >= createdAt 
+   * 2. 如果物料有 deletedAt，则 date < deletedAt (删除当天即隐藏)
    */
   getMaterials: (date?: string): Material[] => {
     const materials = db.getAllMaterials();
     if (!date) return materials.filter(m => !m.deletedAt);
     
     return materials.filter(m => {
-      // 1. 创建日期判断：如果没有记录创建日期（旧数据），默认可见；否则必须在创建日期之后（含当天）
-      const isCreated = !m.createdAt || m.createdAt <= date;
-      // 2. 删除日期判断：如果没有删除日期，可见；如果有删除日期，则必须在删除日期之前或当天
-      const isNotDeletedYet = !m.deletedAt || date <= m.deletedAt;
-      return isCreated && isNotDeletedYet;
+      // 标准化比较，防止 / 分隔符干扰
+      const targetDate = date.replace(/\//g, '-');
+      const createDate = (m.createdAt || '').replace(/\//g, '-');
+      const deleteDate = (m.deletedAt || '').replace(/\//g, '-');
+
+      const isCreated = !createDate || createDate <= targetDate;
+      // 修改点：如果 date 等于 deleteDate，则不显示 (date < deleteDate)
+      const isNotDeleted = !deleteDate || targetDate < deleteDate;
+      
+      return isCreated && isNotDeleted;
     });
   },
 
   addMaterial: (name: string, unit: string, initialStock: number = 0, date: string) => {
     const materials = db.getAllMaterials();
-    const inventoryData = localStorage.getItem(KEYS.INVENTORY);
-    let allInventory: DailyInventory[] = inventoryData ? JSON.parse(inventoryData) : [];
-
-    // 查找是否已存在同名且未删除物料
+    const normalizedDate = date.replace(/\//g, '-');
+    
+    // 检查是否已有同名且未删除物料
     let mat = materials.find(m => m.name === name && !m.deletedAt);
     
     if (!mat) {
-      // 新作物料
       mat = {
         id: Math.random().toString(36).slice(2, 11),
         name,
         unit,
-        createdAt: date
+        createdAt: normalizedDate
       };
       materials.push(mat);
       localStorage.setItem(KEYS.MATERIALS, JSON.stringify(materials));
-      db.logAction('CREATE', `新增物料: ${name}, 单位: ${unit}, 昨日库存: ${initialStock}`);
+      db.logAction('CREATE', `新增物料: ${name}, 昨日库存: ${initialStock}`);
     } else {
-      // 如果物料已存在，但在旧版本中可能没有 createdAt，这里补全
+      // 兼容旧数据补全创建日期
       if (!mat.createdAt) {
-        mat.createdAt = date;
+        mat.createdAt = normalizedDate;
         localStorage.setItem(KEYS.MATERIALS, JSON.stringify(materials));
       }
-      db.logAction('IMPORT', `更新/补录现有物料: ${name}, 设置初始库存: ${initialStock}`);
     }
 
-    // 核心修复：无论物料是否已存在，确保在“今日”有一条库存记录
-    const existingRecordIndex = allInventory.findIndex(l => l.materialId === mat!.id && l.date === date);
+    // 关键修复：导入后立即初始化库存记录，防止 InventoryView 加载不到数据
+    const data = localStorage.getItem(KEYS.INVENTORY);
+    let allLogs: DailyInventory[] = data ? JSON.parse(data) : [];
     
-    if (existingRecordIndex === -1) {
+    const existingIndex = allLogs.findIndex(l => l.materialId === mat!.id && l.date === normalizedDate);
+    if (existingIndex === -1) {
       const newRecord: DailyInventory = {
         id: Math.random().toString(36).slice(2, 11),
         materialId: mat.id,
-        date,
+        date: normalizedDate,
         openingStock: initialStock,
         todayInbound: 0,
         workshopOutbound: 0,
         storeOutbound: 0,
         remainingStock: initialStock
       };
-      allInventory.push(newRecord);
-      localStorage.setItem(KEYS.INVENTORY, JSON.stringify(allInventory));
-      
-      // 触发后续日期的级联更新
-      db.cascadeUpdate(mat.id, date, initialStock);
+      allLogs.push(newRecord);
+      localStorage.setItem(KEYS.INVENTORY, JSON.stringify(allLogs));
+      db.cascadeUpdate(mat.id, normalizedDate, initialStock);
     } else {
-      // 如果已存在记录且是导入操作，可能需要更新初始库存
-      if (initialStock !== allInventory[existingRecordIndex].openingStock) {
-        allInventory[existingRecordIndex].openingStock = initialStock;
-        allInventory[existingRecordIndex].remainingStock = initialStock + allInventory[existingRecordIndex].todayInbound - allInventory[existingRecordIndex].workshopOutbound - allInventory[existingRecordIndex].storeOutbound;
-        localStorage.setItem(KEYS.INVENTORY, JSON.stringify(allInventory));
-        db.cascadeUpdate(mat.id, date, allInventory[existingRecordIndex].remainingStock);
-      }
+      // 如果已存在且是批量导入，更新期初库存
+      allLogs[existingIndex].openingStock = initialStock;
+      allLogs[existingIndex].remainingStock = initialStock + allLogs[existingIndex].todayInbound - allLogs[existingIndex].workshopOutbound - allLogs[existingIndex].storeOutbound;
+      localStorage.setItem(KEYS.INVENTORY, JSON.stringify(allLogs));
+      db.cascadeUpdate(mat.id, normalizedDate, allLogs[existingIndex].remainingStock);
     }
 
     return mat;
@@ -174,14 +177,15 @@ export const db = {
   deleteMaterials: (ids: string[], date: string) => {
     if (ids.length === 0) return;
     const materials = db.getAllMaterials();
+    const normalizedDate = date.replace(/\//g, '-');
     const updatedMaterials = materials.map(m => {
       if (ids.includes(m.id)) {
-        return { ...m, deletedAt: date };
+        return { ...m, deletedAt: normalizedDate };
       }
       return m;
     });
     localStorage.setItem(KEYS.MATERIALS, JSON.stringify(updatedMaterials));
-    db.logAction('DELETE', `逻辑删除物料 (自 ${date} 的次日起隐藏): ${ids.length}项`);
+    db.logAction('DELETE', `删除物料: 已在 ${normalizedDate} 立即隐藏`);
   },
 
   deleteMaterial: (id: string, date: string) => {
@@ -189,14 +193,16 @@ export const db = {
   },
 
   getInventoryForDate: (date: string): DailyInventory[] => {
+    const normalizedDate = date.replace(/\//g, '-');
     const data = localStorage.getItem(KEYS.INVENTORY);
     const allLogs: DailyInventory[] = data ? JSON.parse(data) : [];
-    return allLogs.filter(l => l.date === date);
+    return allLogs.filter(l => l.date === normalizedDate);
   },
 
   saveInventoryRecord: (record: DailyInventory) => {
     const data = localStorage.getItem(KEYS.INVENTORY);
     let allLogs: DailyInventory[] = data ? JSON.parse(data) : [];
+    record.date = record.date.replace(/\//g, '-');
     record.remainingStock = record.openingStock + record.todayInbound - record.workshopOutbound - record.storeOutbound;
     const index = allLogs.findIndex(l => l.materialId === record.materialId && l.date === record.date);
     if (index > -1) allLogs[index] = record;
@@ -209,11 +215,17 @@ export const db = {
     const data = localStorage.getItem(KEYS.INVENTORY);
     if (!data) return;
     let allLogs: DailyInventory[] = JSON.parse(data);
-    const sortedRecords = allLogs.filter(l => l.materialId === materialId).sort((a, b) => a.date.localeCompare(b.date));
+    const normalizedFromDate = fromDate.replace(/\//g, '-');
+    
+    const sortedRecords = allLogs
+      .filter(l => l.materialId === materialId)
+      .sort((a, b) => a.date.localeCompare(b.date));
+      
     let currentOpening = newOpeningForNext;
     let modified = false;
+    
     sortedRecords.forEach(record => {
-      if (record.date > fromDate) {
+      if (record.date > normalizedFromDate) {
         const idx = allLogs.findIndex(l => l.id === record.id);
         if (idx > -1) {
           allLogs[idx].openingStock = currentOpening;
@@ -227,12 +239,13 @@ export const db = {
   },
 
   initializeDate: (date: string) => {
-    const materials = db.getMaterials(date);
-    const currentDayRecords = db.getInventoryForDate(date);
+    const normalizedDate = date.replace(/\//g, '-');
+    const materials = db.getMaterials(normalizedDate);
+    const currentDayRecords = db.getInventoryForDate(normalizedDate);
     const allData = localStorage.getItem(KEYS.INVENTORY);
     const allLogs: DailyInventory[] = allData ? JSON.parse(allData) : [];
     
-    const prevDates = Array.from(new Set(allLogs.map(l => l.date))).sort().filter(d => d < date);
+    const prevDates = Array.from(new Set(allLogs.map(l => l.date))).sort().filter(d => d < normalizedDate);
     const lastDate = prevDates.length > 0 ? prevDates[prevDates.length - 1] : null;
     const updatedRecords: DailyInventory[] = [];
 
@@ -245,8 +258,14 @@ export const db = {
           opening = lastRecord ? lastRecord.remainingStock : 0;
         }
         const newRecord: DailyInventory = {
-          id: Math.random().toString(36).slice(2, 11), materialId: m.id, date, openingStock: opening,
-          todayInbound: 0, workshopOutbound: 0, storeOutbound: 0, remainingStock: opening
+          id: Math.random().toString(36).slice(2, 11), 
+          materialId: m.id, 
+          date: normalizedDate, 
+          openingStock: opening,
+          todayInbound: 0, 
+          workshopOutbound: 0, 
+          storeOutbound: 0, 
+          remainingStock: opening
         };
         updatedRecords.push(newRecord);
         allLogs.push(newRecord);
@@ -256,11 +275,13 @@ export const db = {
   },
 
   getAggregatedStatistics: (startDate: string, endDate: string) => {
+    const s = startDate.replace(/\//g, '-');
+    const e = endDate.replace(/\//g, '-');
     const materials = db.getAllMaterials();
     const inventoryData = localStorage.getItem(KEYS.INVENTORY);
     const allInv: DailyInventory[] = inventoryData ? JSON.parse(inventoryData) : [];
     
-    const rangeInv = allInv.filter(item => item.date >= startDate && item.date <= endDate);
+    const rangeInv = allInv.filter(item => item.date >= s && item.date <= e);
     
     const result = materials.map(mat => {
       const matInv = rangeInv.filter(i => i.materialId === mat.id);
@@ -268,7 +289,7 @@ export const db = {
       const totalWorkshop = matInv.reduce((sum, i) => sum + i.workshopOutbound, 0);
       const totalStore = matInv.reduce((sum, i) => sum + i.storeOutbound, 0);
       
-      const sortedMatInv = allInv.filter(i => i.materialId === mat.id && i.date <= endDate).sort((a,b) => b.date.localeCompare(a.date));
+      const sortedMatInv = allInv.filter(i => i.materialId === mat.id && i.date <= e).sort((a,b) => b.date.localeCompare(a.date));
       const currentStock = sortedMatInv.length > 0 ? sortedMatInv[0].remainingStock : 0;
       
       if (matInv.length === 0 && currentStock === 0) return null;
