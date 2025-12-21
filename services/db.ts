@@ -93,19 +93,31 @@ export const db = {
     return data ? JSON.parse(data) : [];
   },
 
+  /**
+   * 获取特定日期可见的物料
+   * 逻辑：
+   * 1. 如果物料有 createdAt，则 date 必须 >= createdAt (之前的日期不显示)
+   * 2. 如果物料有 deletedAt，则 date 必须 <= deletedAt (删除之后的日期不显示，删除当天仍显示)
+   * 3. 兼容旧数据：如果没有字段，则默认通过
+   */
   getMaterials: (date?: string): Material[] => {
     const materials = db.getAllMaterials();
     if (!date) return materials.filter(m => !m.deletedAt);
     
     return materials.filter(m => {
-      const isCreated = m.createdAt <= date;
-      const isNotDeletedYet = !m.deletedAt || date < m.deletedAt;
+      // 1. 创建日期判断：如果没有记录创建日期（旧数据），默认可见；否则必须在创建日期之后（含当天）
+      const isCreated = !m.createdAt || m.createdAt <= date;
+      
+      // 2. 删除日期判断：如果没有删除日期，可见；如果有删除日期，则必须在删除日期之前或当天
+      const isNotDeletedYet = !m.deletedAt || date <= m.deletedAt;
+      
       return isCreated && isNotDeletedYet;
     });
   },
 
   addMaterial: (name: string, unit: string, initialStock: number = 0, date: string) => {
     const materials = db.getAllMaterials();
+    // 检查是否已有完全同名且未删除的
     const existing = materials.find(m => m.name === name && !m.deletedAt);
     if (existing) return existing;
 
@@ -149,7 +161,7 @@ export const db = {
       return m;
     });
     localStorage.setItem(KEYS.MATERIALS, JSON.stringify(updatedMaterials));
-    db.logAction('DELETE', `逻辑删除物料 (自 ${date} 起): ${ids.length}项`);
+    db.logAction('DELETE', `逻辑删除物料 (自 ${date} 的次日起隐藏): ${ids.length}项`);
   },
 
   deleteMaterial: (id: string, date: string) => {
@@ -199,9 +211,11 @@ export const db = {
     const currentDayRecords = db.getInventoryForDate(date);
     const allData = localStorage.getItem(KEYS.INVENTORY);
     const allLogs: DailyInventory[] = allData ? JSON.parse(allData) : [];
+    
     const prevDates = Array.from(new Set(allLogs.map(l => l.date))).sort().filter(d => d < date);
     const lastDate = prevDates.length > 0 ? prevDates[prevDates.length - 1] : null;
     const updatedRecords: DailyInventory[] = [];
+
     materials.forEach(m => {
       const existing = currentDayRecords.find(r => r.materialId === m.id);
       if (!existing) {
@@ -226,21 +240,17 @@ export const db = {
     const inventoryData = localStorage.getItem(KEYS.INVENTORY);
     const allInv: DailyInventory[] = inventoryData ? JSON.parse(inventoryData) : [];
     
-    // 筛选日期范围内的数据
     const rangeInv = allInv.filter(item => item.date >= startDate && item.date <= endDate);
     
-    // 以 endDate 之后最接近的一个记录作为“今日剩余”或“期末剩余”的参考，如果范围包含今天，则就是当前剩余
     const result = materials.map(mat => {
       const matInv = rangeInv.filter(i => i.materialId === mat.id);
       const totalIn = matInv.reduce((sum, i) => sum + i.todayInbound, 0);
       const totalWorkshop = matInv.reduce((sum, i) => sum + i.workshopOutbound, 0);
       const totalStore = matInv.reduce((sum, i) => sum + i.storeOutbound, 0);
       
-      // 找到该范围内该物料的最后一天的记录，其 remainingStock 即为统计周期结束时的库存
       const sortedMatInv = allInv.filter(i => i.materialId === mat.id && i.date <= endDate).sort((a,b) => b.date.localeCompare(a.date));
       const currentStock = sortedMatInv.length > 0 ? sortedMatInv[0].remainingStock : 0;
       
-      // 只有在周期内有变动或期末有库存的物料才显示
       if (matInv.length === 0 && currentStock === 0) return null;
 
       return {

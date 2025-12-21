@@ -23,7 +23,6 @@ const InventoryView: React.FC = () => {
   useEffect(() => {
     const interval = setInterval(() => {
       const currentBeijingDate = db.getBeijingDate();
-      // 如果当前选中的是“今天”且北京时间跨天了，自动同步
       if (date !== currentBeijingDate && isToday) {
         setDate(currentBeijingDate);
       }
@@ -33,13 +32,17 @@ const InventoryView: React.FC = () => {
   }, [date, isToday]);
 
   const loadData = () => {
-    // 获取该日期下“激活”且“已创建”的物料
+    // 1. 先初始化该日期的库存槽位
+    db.initializeDate(date);
+    
+    // 2. 获取该日期可见的物料定义
     const mats = db.getMaterials(date);
     setMaterials(mats);
-    db.initializeDate(date);
+    
+    // 3. 获取该日期的所有库存记录
     const dailyInv = db.getInventoryForDate(date);
     
-    // 只保留在该日期可见的物料记录
+    // 4. 仅保留在物料定义中可见（未在该日期前删除、已在该日期后创建）的记录
     const visibleMatIds = new Set(mats.map(m => m.id));
     const filteredInv = dailyInv.filter(item => visibleMatIds.has(item.materialId));
     
@@ -60,7 +63,6 @@ const InventoryView: React.FC = () => {
   }, [inventory, materials, searchTerm]);
 
   const handleInputChange = (materialId: string, field: keyof DailyInventory, value: string) => {
-    // 权限校验：非今日不可修改
     if (!isToday) return;
 
     const numValue = Math.max(0, parseInt(value) || 0);
@@ -82,7 +84,7 @@ const InventoryView: React.FC = () => {
       alert("历史数据已被锁定，无法删除。");
       return;
     }
-    if (window.confirm(`确定要删除物料 "${name}" 吗？删除后该物料将从今日及以后的库存列表中消失，但历史数据保留。`)) {
+    if (window.confirm(`确定要删除物料 "${name}" 吗？删除后该物料将从明天的库存列表中消失，但今日及历史记录仍保留。`)) {
       db.deleteMaterial(id, date);
       loadData();
     }
@@ -94,7 +96,7 @@ const InventoryView: React.FC = () => {
       alert("历史数据处于只读模式，无法执行批量删除。");
       return;
     }
-    if (window.confirm(`确定要从今日起删除选中的 ${selectedIds.size} 个物料吗？`)) {
+    if (window.confirm(`确定要批量删除选中的 ${selectedIds.size} 个物料吗？`)) {
       db.deleteMaterials(Array.from(selectedIds), date);
       loadData(); 
     }
@@ -221,7 +223,7 @@ const InventoryView: React.FC = () => {
       {!isToday && (
         <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl flex items-center space-x-3 text-amber-800 animate-in slide-in-from-top duration-300">
            <Lock size={18} className="flex-shrink-0" />
-           <p className="text-sm font-bold">您正在查看历史数据 ({date})。根据系统规则，只有北京时间当天的库存数据允许修改，历史数据已自动锁定为只读状态。此外，该日期尚未创建的或已被删除的物料将不会显示。</p>
+           <p className="text-sm font-bold">您正在查看历史数据 ({date})。根据系统规则，只有北京时间当天的库存数据允许修改。此外，该日期尚未创建或已被删除的物料将不会显示。</p>
         </div>
       )}
 
@@ -268,8 +270,10 @@ const InventoryView: React.FC = () => {
                 <td colSpan={8} className="px-6 py-20 text-center text-gray-400">
                   <div className="flex flex-col items-center">
                     <Calculator size={48} className="mb-4 opacity-10" />
-                    <p className="font-bold">该日期暂无物料数据</p>
-                    <p className="text-xs mt-1">请尝试切换日期或在“今天”新增物料</p>
+                    <p className="font-bold">该日期暂无可见数据</p>
+                    <p className="text-xs mt-1 max-w-xs mx-auto">
+                      提示：系统仅显示该日期已创建且未被删除的物料。如果您刚新增了物料，请确保日期选择的是“今天”。
+                    </p>
                   </div>
                 </td>
               </tr>
