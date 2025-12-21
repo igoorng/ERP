@@ -20,18 +20,48 @@ export const onRequest: any = async (context: any) => {
   }
 
   try {
-    // 1. 验证
+    // 1. 初始化与验证
+    if (path === '/auth/init' && method === 'POST') {
+      // 自动建表逻辑，确保系统鲁棒性
+      const sqls = [
+        `CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE, password_hash TEXT, role TEXT)`,
+        `CREATE TABLE IF NOT EXISTS materials (id TEXT PRIMARY KEY, name TEXT, unit TEXT, created_at TEXT, deleted_at TEXT)`,
+        `CREATE TABLE IF NOT EXISTS inventory (
+          id TEXT PRIMARY KEY, 
+          material_id TEXT, 
+          date TEXT, 
+          opening_stock REAL, 
+          today_inbound REAL, 
+          workshop_outbound REAL, 
+          store_outbound REAL, 
+          remaining_stock REAL
+        )`,
+        `CREATE TABLE IF NOT EXISTS audit_logs (id TEXT PRIMARY KEY, user_id TEXT, username TEXT, action TEXT, details TEXT, timestamp TEXT)`,
+        `CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`
+      ];
+
+      for (const sql of sqls) {
+        await env.DB.prepare(sql).run();
+      }
+
+      // 创建初始管理员账号
+      await env.DB.prepare("INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)")
+        .bind('admin-id', 'admin', 'admin', 'admin').run();
+      
+      // 插入默认系统名称
+      await env.DB.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+        .bind('SYSTEM_NAME', 'MaterialFlow Pro').run();
+      await env.DB.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+        .bind('LOW_STOCK_THRESHOLD', '10').run();
+
+      return json({ message: 'Database initialized successfully' });
+    }
+
     if (path === '/auth/login' && method === 'POST') {
       const { username, password } = await request.json() as any;
       const user = await env.DB.prepare("SELECT id, username, role FROM users WHERE username = ? AND password_hash = ?")
         .bind(username, password).first();
       return user ? json(user) : json({ error: 'Unauthorized' }, 401);
-    }
-
-    if (path === '/auth/init' && method === 'POST') {
-      await env.DB.prepare("INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)")
-        .bind('admin-id', 'admin', 'admin', 'admin').run();
-      return json({ message: 'Init success' });
     }
 
     // 2. 物料 (Materials)
@@ -63,7 +93,7 @@ export const onRequest: any = async (context: any) => {
       return json({ success: true });
     }
 
-    // 3. 库存 (Inventory) - 已修复 bind 顺序并移除冗余块
+    // 3. 库存 (Inventory)
     if (path === '/inventory' && method === 'GET') {
       const date = url.searchParams.get('date');
       const { results } = await env.DB.prepare("SELECT * FROM inventory WHERE date = ?").bind(date).all();
