@@ -11,18 +11,8 @@ const KEYS = {
   SESSION: DB_PREFIX + 'session'
 };
 
-// Mock Initial Data
-const INITIAL_USERS: User[] = [
-  { id: '1', username: 'admin', role: 'admin' }
-];
-
 export const db = {
   // --- Auth & Users ---
-  getUsers: (): User[] => {
-    const data = localStorage.getItem(KEYS.USERS);
-    return data ? JSON.parse(data) : INITIAL_USERS;
-  },
-
   getCurrentUser: (): User | null => {
     const data = localStorage.getItem(KEYS.SESSION);
     return data ? JSON.parse(data) : null;
@@ -49,8 +39,33 @@ export const db = {
     };
     materials.push(newMaterial);
     localStorage.setItem(KEYS.MATERIALS, JSON.stringify(materials));
-    db.logAction('CREATE', `Added material: ${name}`);
+    db.logAction('CREATE', `新增物料: ${name} (${unit})`);
     return newMaterial;
+  },
+
+  deleteMaterial: (id: string) => {
+    db.deleteMaterials([id]);
+  },
+
+  deleteMaterials: (ids: string[]) => {
+    if (ids.length === 0) return;
+    const materials = db.getMaterials();
+    const materialsToDelete = materials.filter(m => ids.includes(m.id));
+    
+    // 1. 删除物料定义
+    const updatedMaterials = materials.filter(m => !ids.includes(m.id));
+    localStorage.setItem(KEYS.MATERIALS, JSON.stringify(updatedMaterials));
+
+    // 2. 清理关联的库存记录
+    const inventoryData = localStorage.getItem(KEYS.INVENTORY);
+    if (inventoryData) {
+      const allInventory: DailyInventory[] = JSON.parse(inventoryData);
+      const updatedInventory = allInventory.filter(item => !ids.includes(item.materialId));
+      localStorage.setItem(KEYS.INVENTORY, JSON.stringify(updatedInventory));
+    }
+
+    const names = materialsToDelete.map(m => m.name).join(', ');
+    db.logAction('DELETE', `批量删除物料: ${names}`);
   },
 
   // --- Inventory & Calculations ---
@@ -64,7 +79,7 @@ export const db = {
     const data = localStorage.getItem(KEYS.INVENTORY);
     let allLogs: DailyInventory[] = data ? JSON.parse(data) : [];
     
-    // Recalculate remaining just in case
+    // 实时计算：实时库存 + 今日入库 - 车间出库 - 店面出库 = 今日剩余库存
     record.remainingStock = record.openingStock + record.todayInbound - record.workshopOutbound - record.storeOutbound;
 
     const index = allLogs.findIndex(l => l.materialId === record.materialId && l.date === record.date);
@@ -74,17 +89,12 @@ export const db = {
       allLogs.push(record);
     }
     localStorage.setItem(KEYS.INVENTORY, JSON.stringify(allLogs));
-    
-    // Propagate to future dates if necessary (simple version)
-    // In a real DB, this would be a trigger or a recursive update
   },
 
-  // Initialize a date by carrying over from previous available date
   initializeDate: (date: string) => {
     const materials = db.getMaterials();
     const currentDayRecords = db.getInventoryForDate(date);
     
-    // Find previous date
     const allData = localStorage.getItem(KEYS.INVENTORY);
     const allLogs: DailyInventory[] = allData ? JSON.parse(allData) : [];
     const prevDates = Array.from(new Set(allLogs.map(l => l.date))).sort().filter(d => d < date);
@@ -139,6 +149,6 @@ export const db = {
       timestamp: new Date().toISOString()
     };
     logs.unshift(newLog);
-    localStorage.setItem(KEYS.LOGS, JSON.stringify(logs.slice(0, 1000))); // Keep last 1000
+    localStorage.setItem(KEYS.LOGS, JSON.stringify(logs.slice(0, 1000)));
   }
 };

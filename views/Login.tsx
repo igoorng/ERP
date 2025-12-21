@@ -14,10 +14,15 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (username === 'admin' && password === 'admin') {
-      onLoginSuccess({ id: '1', username: 'admin', role: 'admin' });
+    
+    // 从环境变量读取配置，如果不存在则使用默认值
+    const envUser = process.env.APP_USERNAME || 'admin';
+    const envPass = process.env.APP_PASSWORD || 'admin';
+
+    if (username === envUser && password === envPass) {
+      onLoginSuccess({ id: '1', username: envUser, role: 'admin' });
     } else {
-      setError('用户名或密码错误 (Try admin/admin)');
+      setError('用户名或密码错误。如果您修改了 .env 文件，请确保配置已生效。');
     }
   };
 
@@ -27,7 +32,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
           <div className="bg-blue-600 p-8 text-center text-white">
             <h1 className="text-3xl font-bold">MaterialFlow</h1>
-            <p className="mt-2 opacity-80 text-sm">物料管理系统系统登录</p>
+            <p className="mt-2 opacity-80 text-sm">物料管理系统登录</p>
           </div>
           
           <form onSubmit={handleLogin} className="p-8 space-y-6">
@@ -72,12 +77,12 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
               type="submit"
               className="w-full py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200"
             >
-              登 录 Sign In
+              登 录
             </button>
           </form>
 
           <div className="p-4 bg-gray-50 border-t border-gray-100 text-center text-xs text-gray-500">
-            Powered by MaterialFlow Pro v1.0
+            可通过修改 .env 文件更新凭据 | Pro v1.1
           </div>
         </div>
       </div>
