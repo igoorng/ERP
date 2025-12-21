@@ -8,11 +8,11 @@ declare const XLSX: any;
 const AVAILABLE_COLUMNS = [
   { id: 'name', label: '物料名称', key: '物料名称' },
   { id: 'unit', label: '物料单位', key: '物料单位' },
-  { id: 'opening', label: '昨日库存', key: '昨日库存 (期初)' },
+  { id: 'opening', label: '昨日库存', key: '昨日库存' },
   { id: 'inbound', label: '今日入库', key: '今日入库' },
   { id: 'workshop', label: '车间出库', key: '车间出库' },
   { id: 'store', label: '店面出库', key: '店面出库' },
-  { id: 'remaining', label: '剩余库存', key: '今日剩余库存 (期末)' },
+  { id: 'remaining', label: '剩余库存', key: '今日库存' },
   { id: 'date', label: '统计日期', key: '日期' },
 ];
 
@@ -46,6 +46,7 @@ const ReportsView: React.FC = () => {
 
     setLoading(true);
     try {
+      // 这里的 db.getMaterials() 默认返回未删除的物料
       const [materials, inventory] = await Promise.all([
         db.getMaterials(),
         db.getInventoryForDate(date)
@@ -56,33 +57,43 @@ const ReportsView: React.FC = () => {
         return;
       }
 
-      const exportData = inventory.map(item => {
-        const mat = materials.find(m => m.id === item.materialId);
-        const row: any = {};
-        
-        AVAILABLE_COLUMNS.forEach(col => {
-          if (selectedCols.includes(col.id)) {
-            switch (col.id) {
-              case 'name': row[col.key] = mat?.name; break;
-              case 'unit': row[col.key] = mat?.unit; break;
-              case 'opening': row[col.key] = item.openingStock; break;
-              case 'inbound': row[col.key] = item.todayInbound; break;
-              case 'workshop': row[col.key] = item.workshopOutbound; break;
-              case 'store': row[col.key] = item.storeOutbound; break;
-              case 'remaining': row[col.key] = item.remainingStock; break;
-              case 'date': row[col.key] = item.date; break;
+      // 核心修改：过滤掉在 materials 列表中找不到（即已被删除）的物料对应的库存记录
+      const exportData = inventory
+        .map(item => {
+          const mat = materials.find(m => m.id === item.materialId);
+          // 如果物料已被删除或不存在，则跳过
+          if (!mat) return null;
+
+          const row: any = {};
+          AVAILABLE_COLUMNS.forEach(col => {
+            if (selectedCols.includes(col.id)) {
+              switch (col.id) {
+                case 'name': row[col.key] = mat.name; break;
+                case 'unit': row[col.key] = mat.unit; break;
+                case 'opening': row[col.key] = item.openingStock; break;
+                case 'inbound': row[col.key] = item.todayInbound; break;
+                case 'workshop': row[col.key] = item.workshopOutbound; break;
+                case 'store': row[col.key] = item.storeOutbound; break;
+                case 'remaining': row[col.key] = item.remainingStock; break;
+                case 'date': row[col.key] = item.date; break;
+              }
             }
-          }
-        });
-        return row;
-      });
+          });
+          return row;
+        })
+        .filter(row => row !== null); // 移除 null 记录
+
+      if (exportData.length === 0) {
+        alert(`${date} 选定日期的有效物料数据为空（可能所有记录的物料都已被删除）。`);
+        return;
+      }
 
       const worksheet = XLSX.utils.json_to_sheet(exportData);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, `Inventory_${date}`);
       XLSX.writeFile(workbook, `数据统计_${date}.xlsx`);
       
-      db.logAction('EXPORT', `导出报表: 日期 ${date}, 字段数 ${selectedCols.length}`);
+      db.logAction('EXPORT', `导出报表: 日期 ${date}, 字段数 ${selectedCols.length}, 导出项 ${exportData.length}`);
     } catch (e) {
       alert('导出失败，请检查网络连接');
     } finally {
@@ -161,7 +172,7 @@ const ReportsView: React.FC = () => {
               })}
             </div>
             <p className="text-[10px] text-gray-400 font-bold italic text-center mt-4">
-              * 建议至少保留“物料名称”与“剩余库存”
+              * 已删除的物料将自动从报表中排除
             </p>
           </div>
         </div>
