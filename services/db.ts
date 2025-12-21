@@ -57,7 +57,7 @@ export const db = {
     allLogs.push(newRecord);
     localStorage.setItem(KEYS.INVENTORY, JSON.stringify(allLogs));
 
-    db.logAction('CREATE', `新增物料: ${name} (${unit}), 初始库存: ${initialStock}`);
+    db.logAction('CREATE', `新增物料: ${name} (${unit}), 昨日库存: ${initialStock}`);
     // 触发后续日期的级联更新（以防万一是在过去日期新增）
     db.cascadeUpdate(newMaterial.id, date, initialStock);
     return newMaterial;

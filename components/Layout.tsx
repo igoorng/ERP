@@ -23,10 +23,10 @@ const Layout: React.FC<LayoutProps> = ({ user, currentView, setView, onLogout, c
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const navItems = [
-    { id: ViewMode.DASHBOARD, label: '概览 Dashboard', icon: LayoutDashboard },
-    { id: ViewMode.INVENTORY, label: '物料管理 Inventory', icon: Package },
-    { id: ViewMode.REPORTS, label: '报表导出 Reports', icon: FileText },
-    { id: ViewMode.LOGS, label: '操作日志 Logs', icon: History },
+    { id: ViewMode.DASHBOARD, label: '概览', icon: LayoutDashboard },
+    { id: ViewMode.INVENTORY, label: '物料管理', icon: Package },
+    { id: ViewMode.REPORTS, label: '报表导出', icon: FileText },
+    { id: ViewMode.LOGS, label: '操作日志', icon: History },
   ];
 
   const handleNavClick = (view: ViewMode) => {
@@ -77,7 +77,7 @@ const Layout: React.FC<LayoutProps> = ({ user, currentView, setView, onLogout, c
 
         <div className="absolute bottom-0 w-full p-4">
           <div className="px-4 py-4 bg-slate-800/50 rounded-xl mb-3">
-            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-1">当前用户 Current User</p>
+            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-1">当前用户</p>
             <p className="text-sm font-bold text-white truncate">{user.username}</p>
           </div>
           <button

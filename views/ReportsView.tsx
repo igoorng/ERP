@@ -8,7 +8,7 @@ declare const XLSX: any;
 const AVAILABLE_COLUMNS = [
   { id: 'name', label: '物料名称', key: '物料名称' },
   { id: 'unit', label: '物料单位', key: '物料单位' },
-  { id: 'opening', label: '期初库存', key: '实时库存 (期初)' },
+  { id: 'opening', label: '昨日库存', key: '昨日库存 (期初)' },
   { id: 'inbound', label: '今日入库', key: '今日入库' },
   { id: 'workshop', label: '车间出库', key: '车间出库' },
   { id: 'store', label: '店面出库', key: '店面出库' },
