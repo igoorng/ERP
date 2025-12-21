@@ -15,8 +15,9 @@ const Dashboard: React.FC = () => {
     if (!silent) setLoading(true);
     try {
       await db.initializeDate(todayStr);
+      // 显式传递 todayStr 确保前后端日期逻辑一致
       const [mats, inv, sysSettings] = await Promise.all([
-        db.getMaterials(),
+        db.getMaterials(todayStr),
         db.getInventoryForDate(todayStr),
         db.getSettings()
       ]);

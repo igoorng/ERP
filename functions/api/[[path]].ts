@@ -22,7 +22,6 @@ export const onRequest: any = async (context: any) => {
   try {
     // 1. 初始化与验证
     if (path === '/auth/init' && method === 'POST') {
-      // 自动建表逻辑，确保系统鲁棒性
       const sqls = [
         `CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE, password_hash TEXT, role TEXT)`,
         `CREATE TABLE IF NOT EXISTS materials (id TEXT PRIMARY KEY, name TEXT, unit TEXT, created_at TEXT, deleted_at TEXT)`,
@@ -44,11 +43,9 @@ export const onRequest: any = async (context: any) => {
         await env.DB.prepare(sql).run();
       }
 
-      // 创建初始管理员账号
       await env.DB.prepare("INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)")
         .bind('admin-id', 'admin', 'admin', 'admin').run();
       
-      // 插入默认系统名称
       await env.DB.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
         .bind('SYSTEM_NAME', 'MaterialFlow Pro').run();
       await env.DB.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
@@ -66,12 +63,17 @@ export const onRequest: any = async (context: any) => {
 
     // 2. 物料 (Materials)
     if (path === '/materials' && method === 'GET') {
-      const date = url.searchParams.get('date') || new Date().toISOString().split('T')[0];
-      const { results } = await env.DB.prepare(`
-        SELECT * FROM materials 
-        WHERE created_at <= ? 
-        AND (deleted_at IS NULL OR deleted_at > ?)
-      `).bind(date, date).all();
+      const date = url.searchParams.get('date');
+      let query = "SELECT * FROM materials WHERE (deleted_at IS NULL OR deleted_at > ?)";
+      let params = [date || '9999-12-31'];
+
+      // 如果提供了日期，我们只显示在该日期之前已创建且未在该日期前被删除的物料
+      if (date) {
+        query += " AND created_at <= ?";
+        params.push(date);
+      }
+
+      const { results } = await env.DB.prepare(query).bind(...params).all();
       return json(results);
     }
 
