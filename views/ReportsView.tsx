@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { db } from '../services/db';
 import { Download, Calendar, FileSpreadsheet, CheckCircle, Circle } from 'lucide-react';
 
@@ -17,9 +17,12 @@ const AVAILABLE_COLUMNS = [
 ];
 
 const ReportsView: React.FC = () => {
-  // 核心修改：使用 db.getBeijingDate()
-  const [date, setDate] = useState(db.getBeijingDate());
-  const [selectedCols, setSelectedCols] = useState<string[]>(AVAILABLE_COLUMNS.map(c => c.id));
+  // 获取当前的北京日期作为截止限制
+  const maxDate = useMemo(() => db.getBeijingDate(), []);
+  const [date, setDate] = useState(maxDate);
+  
+  // 修改：默认仅选中 物料名称、物料单位、剩余库存
+  const [selectedCols, setSelectedCols] = useState<string[]>(['name', 'unit', 'remaining']);
 
   const toggleColumn = (id: string) => {
     if (selectedCols.includes(id)) {
@@ -32,6 +35,12 @@ const ReportsView: React.FC = () => {
   };
 
   const exportDailyData = () => {
+    // 额外校验：防止手动输入绕过 UI 限制
+    if (date > maxDate) {
+      alert("无法导出未来日期的报表");
+      return;
+    }
+
     const materials = db.getMaterials();
     const inventory = db.getInventoryForDate(date);
     
@@ -72,7 +81,7 @@ const ReportsView: React.FC = () => {
             <FileSpreadsheet className="text-blue-600" size={32} />
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">定制报表导出</h2>
-          <p className="text-gray-500">灵活选择导出的物料字段与统计日期</p>
+          <p className="text-gray-500">灵活选择导出的物料字段与统计日期（仅限今日及以前）</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
@@ -84,11 +93,15 @@ const ReportsView: React.FC = () => {
                 <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                 <input
                   type="date"
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                  max={maxDate}
+                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                 />
               </div>
+              <p className="mt-2 text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                * 最大可选日期为北京时间今日: {maxDate}
+              </p>
             </div>
 
             <button
@@ -141,7 +154,7 @@ const ReportsView: React.FC = () => {
           </h4>
           <p className="text-xs text-gray-500 leading-relaxed">
             当前导出的文件将包含 <span className="text-blue-600 font-bold">{selectedCols.length}</span> 个列。
-            文件名格式为: <code className="bg-white px-1 rounded border">Inventory_Report_{date}.xlsx</code>
+            文件名格式为: <code className="bg-white px-1 rounded border">数据统计_{date}.xlsx</code>
           </p>
         </div>
       </div>

@@ -33,6 +33,15 @@ export const db = {
     }).format(new Date());
   },
 
+  getBeijingTimeOnly: (): string => {
+    return new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }).format(new Date());
+  },
+
   getBeijingTimestamp: (): string => {
     return new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
   },

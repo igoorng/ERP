@@ -2,7 +2,7 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import { db } from '../services/db';
 import { config } from '../services/config';
-import { Package, TrendingUp, TrendingDown, ShoppingBag, AlertTriangle, Calendar as CalendarIcon } from 'lucide-react';
+import { Package, TrendingUp, TrendingDown, ShoppingBag, AlertTriangle, Clock } from 'lucide-react';
 import { 
   BarChart, 
   Bar, 
@@ -15,18 +15,21 @@ import {
 } from 'recharts';
 
 const Dashboard: React.FC = () => {
-  // 核心：使用 db 工具函数获取准确北京日期
   const [todayStr, setTodayStr] = useState(db.getBeijingDate());
+  const [currentTime, setCurrentTime] = useState(db.getBeijingTimeOnly());
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  // 自动更新逻辑：每分钟检查一次北京日期是否发生变更
+  // 自动更新逻辑：每 10 秒更新一次时间，并检查日期是否变更
   useEffect(() => {
     const interval = setInterval(() => {
-      const currentBeijingDate = db.getBeijingDate();
-      if (currentBeijingDate !== todayStr) {
-        setTodayStr(currentBeijingDate);
+      const nowTime = db.getBeijingTimeOnly();
+      const nowDate = db.getBeijingDate();
+      
+      setCurrentTime(nowTime);
+      if (nowDate !== todayStr) {
+        setTodayStr(nowDate);
       }
-    }, 60000); // 每 60 秒检查一次
+    }, 10000); 
 
     return () => clearInterval(interval);
   }, [todayStr]);
@@ -78,9 +81,12 @@ const Dashboard: React.FC = () => {
           <h2 className="text-2xl font-black text-gray-900 tracking-tight">今日数据概览</h2>
           <p className="text-gray-500 text-sm font-medium">数据基于当日实时变动自动计算</p>
         </div>
-        <div className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-2xl shadow-lg shadow-blue-200">
-          <CalendarIcon size={18} />
-          <span className="font-bold text-sm tracking-tight">{todayStr} (北京时间)</span>
+        <div className="flex items-center space-x-3 bg-blue-600 text-white px-5 py-2.5 rounded-2xl shadow-xl shadow-blue-200">
+          <Clock size={18} className="animate-pulse" />
+          <div className="flex flex-col items-start leading-none">
+            <span className="font-black text-lg tracking-tighter">{currentTime}</span>
+            <span className="text-[10px] font-bold opacity-80 uppercase tracking-widest">{todayStr}</span>
+          </div>
         </div>
       </div>
 
@@ -126,7 +132,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div className="flex items-center space-x-1.5 bg-green-50 px-3 py-1 rounded-full">
               <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-[10px] font-black text-green-600">北京时间同步中</span>
+              <span className="text-[10px] font-black text-green-600">北京时间实时同步</span>
             </div>
           </div>
           <div className="h-72 sm:h-80 w-full">

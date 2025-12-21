@@ -3,18 +3,43 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../services/db';
 import { config } from '../services/config';
 import { Material, DailyInventory } from '../types';
-import { Plus, Search, Upload, Trash2, X, CheckSquare, Square, Calculator } from 'lucide-react';
+import { Plus, Search, Upload, Trash2, X, CheckSquare, Square, Calculator, Calendar as CalendarIcon } from 'lucide-react';
 
 declare const XLSX: any;
 
 const InventoryView: React.FC = () => {
-  // 核心修改：使用 db.getBeijingDate()
+  // 核心：初始日期使用北京时间
   const [date, setDate] = useState(db.getBeijingDate());
   const [searchTerm, setSearchTerm] = useState('');
   const [materials, setMaterials] = useState<Material[]>([]);
   const [inventory, setInventory] = useState<DailyInventory[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // 动态同步北京日期：防止跨天时系统时间不更新
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const currentBeijingDate = db.getBeijingDate();
+      // 只有当用户没有手动选择日期（即当前显示的仍是“今天”）时，才进行自动跨天更新
+      // 或者更简单的逻辑：如果当前选中的日期和实际北京日期不符，且系统刚刚过零点，则更新
+      // 这里采用保守策略：如果当前 state 是之前的“今天”，则更新为新的“今天”
+      if (date === currentBeijingDate) return;
+      
+      // 如果日期变了，且当前页面没有在操作（比如没打开弹窗），则可以考虑自动同步
+      // 为了用户体验，我们主要确保初始加载和手动刷新是准确的
+      // 这里我们强制同步最新的北京日期
+      setTodayToCurrent();
+    }, 10000); 
+
+    return () => clearInterval(interval);
+  }, [date]);
+
+  const setTodayToCurrent = () => {
+    const now = db.getBeijingDate();
+    if (date !== now) {
+      setDate(now);
+    }
+  };
 
   const loadData = () => {
     const mats = db.getMaterials();
@@ -137,34 +162,41 @@ const InventoryView: React.FC = () => {
           <input
             type="text"
             placeholder="搜物料名称..."
-            className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all outline-none text-base"
+            className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all outline-none text-base font-medium"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
         
         <div className="flex items-center space-x-2">
-          {/* Date Picker */}
-          <div className="flex-1 lg:flex-none relative">
+          {/* Date Picker with Today Indicator */}
+          <div className="flex-1 lg:flex-none relative group">
+             <div className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-500 pointer-events-none">
+                <CalendarIcon size={16} />
+             </div>
              <input
               type="date"
-              className="w-full lg:w-auto px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl font-bold text-gray-700 outline-none text-base"
+              className="w-full lg:w-auto pl-10 pr-4 py-3 bg-blue-50/50 border border-blue-100 rounded-xl font-black text-blue-700 outline-none text-sm transition-all focus:ring-2 focus:ring-blue-500"
               value={date}
+              max={db.getBeijingDate()}
               onChange={(e) => setDate(e.target.value)}
             />
+            {date === db.getBeijingDate() && (
+              <span className="absolute -top-2 -right-1 bg-green-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full shadow-sm">今日</span>
+            )}
           </div>
 
-          <label className="hidden lg:flex items-center px-5 py-3 bg-indigo-50 text-indigo-600 rounded-xl cursor-pointer hover:bg-indigo-100 transition-all font-bold shadow-sm border border-indigo-100">
-            <Upload size={18} className="mr-2" />
-            批量导入
+          <label className="hidden lg:flex items-center px-5 py-3 bg-indigo-50 text-indigo-600 rounded-xl cursor-pointer hover:bg-indigo-100 transition-all font-bold shadow-sm border border-indigo-100 text-sm">
+            <Upload size={16} className="mr-2" />
+            Excel导入
             <input type="file" className="hidden" accept=".xlsx, .xls" onChange={handleFileUpload} />
           </label>
 
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="hidden lg:flex items-center px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-bold shadow-lg shadow-blue-200"
+            className="hidden lg:flex items-center px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-bold shadow-lg shadow-blue-200 text-sm"
           >
-            <Plus size={18} className="mr-2" />
+            <Plus size={16} className="mr-2" />
             新增物料
           </button>
         </div>
@@ -211,7 +243,11 @@ const InventoryView: React.FC = () => {
             {filteredData.length === 0 ? (
                <tr>
                 <td colSpan={8} className="px-6 py-20 text-center text-gray-400">
-                  未找到相关物料。
+                  <div className="flex flex-col items-center">
+                    <Calculator size={48} className="mb-4 opacity-10" />
+                    <p className="font-bold">该日期暂无物料数据</p>
+                    <p className="text-xs mt-1">请尝试切换日期或新增物料</p>
+                  </div>
                 </td>
               </tr>
             ) : (
@@ -282,7 +318,7 @@ const InventoryView: React.FC = () => {
         {filteredData.length === 0 ? (
           <div className="py-20 text-center text-gray-400">
             <Calculator size={48} className="mx-auto mb-4 opacity-10" />
-            <p className="text-sm font-medium">暂无物料数据</p>
+            <p className="text-sm font-bold">该日期暂无物料记录</p>
           </div>
         ) : (
           filteredData.map(item => {
