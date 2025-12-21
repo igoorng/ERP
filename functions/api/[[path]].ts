@@ -68,7 +68,6 @@ export const onRequest: any = async (context: any) => {
       let params: any[] = [];
 
       if (timestamp) {
-        // 只有在指定时间戳之前创建，且未被删除（或在该时间戳之后才删除）的物料才可见
         query += " WHERE created_at <= ? AND (deleted_at IS NULL OR deleted_at > ?)";
         params = [parseInt(timestamp), parseInt(timestamp)];
       } else {
@@ -82,13 +81,14 @@ export const onRequest: any = async (context: any) => {
     if (path === '/materials' && method === 'POST') {
       const { name, unit, initialStock, date, timestamp } = await request.json() as any;
       const id = crypto.randomUUID();
-      // 插入物料主表，使用时间戳
+      // 1. 插入物料
       await env.DB.prepare("INSERT INTO materials (id, name, unit, created_at) VALUES (?, ?, ?, ?)")
         .bind(id, name, unit, timestamp).run();
-      // 插入初始化库存记录，关联到当天的 YYYY-MM-DD
+      // 2. 插入首日库存记录
       await env.DB.prepare("INSERT INTO inventory (id, material_id, date, opening_stock, today_inbound, workshop_outbound, store_outbound, remaining_stock) VALUES (?, ?, ?, ?, 0, 0, 0, ?)")
         .bind(crypto.randomUUID(), id, date, initialStock, initialStock).run();
-      return json({ id, name, unit });
+      
+      return json({ id, name, unit, createdAt: timestamp });
     }
 
     if (path === '/materials/batch-delete' && method === 'POST') {
@@ -129,7 +129,6 @@ export const onRequest: any = async (context: any) => {
 
     if (path === '/inventory/initialize' && method === 'POST') {
       const { date, timestamp } = await request.json() as any;
-      // 基于时间戳查询所有应该在此时生效的物料
       const mats = await env.DB.prepare(`
         SELECT id FROM materials 
         WHERE created_at <= ? 

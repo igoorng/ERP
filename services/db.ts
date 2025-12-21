@@ -24,9 +24,13 @@ export const db = {
     return `${y}-${m}-${d}`;
   },
 
-  // 获取该日期北京时间 23:59:59.999 的 Unix 时间戳
+  // 获取该日期北京时间 00:00:00.000 的 Unix 时间戳（用于创建）
+  getBeijingDayStartTimestamp: (dateStr: string): number => {
+    return new Date(`${dateStr}T00:00:00.000+08:00`).getTime();
+  },
+
+  // 获取该日期北京时间 23:59:59.999 的 Unix 时间戳（用于查询过滤）
   getBeijingDayEndTimestamp: (dateStr: string): number => {
-    // 强制指定 +08:00 时区偏移
     return new Date(`${dateStr}T23:59:59.999+08:00`).getTime();
   },
 
@@ -141,6 +145,8 @@ export const db = {
   },
 
   addMaterial: async (name: string, unit: string, initialStock: number, date: string): Promise<Material> => {
+    // 关键修复：物料创建时间设为该日期的 00:00:00，确保在该日期可见
+    const ts = db.getBeijingDayStartTimestamp(date);
     const response = await fetch(`${API_BASE}/materials`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -148,8 +154,8 @@ export const db = {
         name, 
         unit, 
         initialStock, 
-        date, // 用于库存记录的 YYYY-MM-DD
-        timestamp: Date.now() // 精确的创建毫秒时间戳
+        date, 
+        timestamp: ts 
       })
     });
     const result = await response.json();
