@@ -8,6 +8,61 @@ const DEFAULT_SETTINGS = {
   SYSTEM_NAME: 'MaterialFlow Pro'
 };
 
+// 缓存系统
+interface CacheItem<T> {
+  data: T;
+  timestamp: number;
+  expiry: number;
+}
+
+class DataCache {
+  private cache = new Map<string, CacheItem<any>>();
+  private readonly DEFAULT_TTL = 5 * 60 * 1000; // 5分钟缓存
+
+  set<T>(key: string, data: T, ttl: number = this.DEFAULT_TTL): void {
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now(),
+      expiry: Date.now() + ttl
+    });
+  }
+
+  get<T>(key: string): T | null {
+    const item = this.cache.get(key);
+    if (!item) return null;
+    
+    if (Date.now() > item.expiry) {
+      this.cache.delete(key);
+      return null;
+    }
+    
+    return item.data;
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+
+  delete(key: string): void {
+    this.cache.delete(key);
+  }
+
+  // 清理过期缓存
+  cleanup(): void {
+    const now = Date.now();
+    for (const [key, item] of this.cache.entries()) {
+      if (now > item.expiry) {
+        this.cache.delete(key);
+      }
+    }
+  }
+}
+
+const dataCache = new DataCache();
+
+// 定期清理过期缓存
+setInterval(() => dataCache.cleanup(), 60000); // 每分钟清理一次
+
 export const db = {
   // --- Time Utilities ---
   getBeijingDate: (): string => {
@@ -133,15 +188,39 @@ export const db = {
     await db.logAction('DELETE', `删除了用户 ID ${userId}`);
   },
 
+  // 缓存管理
+  clearCache: (): void => {
+    dataCache.clear();
+  },
+
+  clearCacheForDate: (date: string): void => {
+    dataCache.delete(`materials_${date}`);
+    dataCache.delete('materials_current');
+    dataCache.delete(`inventory_${date}`);
+  },
+
   // --- Materials ---
-  getMaterials: async (date?: string): Promise<Material[]> => {
+  getMaterials: async (date?: string, forceRefresh: boolean = false): Promise<Material[]> => {
+    const cacheKey = `materials_${date || 'current'}`;
+    
+    // 尝试从缓存获取数据
+    if (!forceRefresh) {
+      const cached = dataCache.get<Material[]>(cacheKey);
+      if (cached) return cached;
+    }
+    
+    // 从服务器获取数据
     let url = `${API_BASE}/materials`;
     if (date) {
       const ts = db.getBeijingDayEndTimestamp(date);
       url += `?timestamp=${ts}`;
     }
     const response = await fetch(url);
-    return response.json();
+    const data = await response.json();
+    
+    // 缓存数据
+    dataCache.set(cacheKey, data);
+    return data;
   },
 
   addMaterial: async (name: string, unit: string, initialStock: number, date: string): Promise<Material> => {
@@ -160,6 +239,12 @@ export const db = {
     });
     const result = await response.json();
     await db.logAction('CREATE', `新增物料: ${name} (期初: ${initialStock})`);
+    
+    // 清除相关缓存
+    dataCache.delete(`materials_${date}`);
+    dataCache.delete('materials_current');
+    dataCache.delete(`inventory_${date}`);
+    
     return result;
   },
 
@@ -171,6 +256,11 @@ export const db = {
       body: JSON.stringify({ ids, timestamp: ts })
     });
     await db.logAction('DELETE', `删除物料: ${ids.length}项`);
+    
+    // 清除相关缓存
+    dataCache.delete(`materials_${date}`);
+    dataCache.delete('materials_current');
+    dataCache.delete(`inventory_${date}`);
   },
 
   deleteMaterial: async (id: string, date: string): Promise<void> => {
@@ -178,9 +268,22 @@ export const db = {
   },
 
   // --- Inventory ---
-  getInventoryForDate: async (date: string): Promise<DailyInventory[]> => {
+  getInventoryForDate: async (date: string, forceRefresh: boolean = false): Promise<DailyInventory[]> => {
+    const cacheKey = `inventory_${date}`;
+    
+    // 尝试从缓存获取数据
+    if (!forceRefresh) {
+      const cached = dataCache.get<DailyInventory[]>(cacheKey);
+      if (cached) return cached;
+    }
+    
+    // 从服务器获取数据
     const response = await fetch(`${API_BASE}/inventory?date=${date}&timestamp=${Date.now()}`);
-    return response.json();
+    const data = await response.json();
+    
+    // 缓存数据
+    dataCache.set(cacheKey, data);
+    return data;
   },
 
   saveInventoryRecord: async (record: DailyInventory): Promise<void> => {
@@ -189,6 +292,9 @@ export const db = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(record)
     });
+    
+    // 清除相关缓存
+    dataCache.delete(`inventory_${record.date}`);
   },
 
   initializeDate: async (date: string): Promise<void> => {

@@ -11,14 +11,14 @@ const Dashboard: React.FC = () => {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
-  const fetchData = async (silent = false) => {
+  const fetchData = async (silent = false, forceRefresh = false) => {
     if (!silent) setLoading(true);
     try {
       await db.initializeDate(todayStr);
       // 显式传递 todayStr 确保前后端日期逻辑一致
       const [mats, inv, sysSettings] = await Promise.all([
-        db.getMaterials(todayStr),
-        db.getInventoryForDate(todayStr),
+        db.getMaterials(todayStr, forceRefresh),
+        db.getInventoryForDate(todayStr, forceRefresh),
         db.getSettings()
       ]);
       setMaterials(mats);
@@ -87,7 +87,7 @@ const Dashboard: React.FC = () => {
           <p className="text-[10px] text-gray-400 font-black uppercase tracking-[0.2em] ml-0 lg:ml-4">{todayStr} • 实时库存仪表盘</p>
         </div>
         <div className="flex items-center space-x-2">
-          <button onClick={() => fetchData()} className="p-3 bg-white/80 backdrop-blur-md border border-gray-100 rounded-xl text-gray-400 hover:text-blue-600 hover:shadow-lg transition-all active:scale-90"><RefreshCw size={18}/></button>
+          <button onClick={() => fetchData(false, true)} className="p-3 bg-white/80 backdrop-blur-md border border-gray-100 rounded-xl text-gray-400 hover:text-blue-600 hover:shadow-lg transition-all active:scale-90" title="强制刷新数据"><RefreshCw size={18}/></button>
           <div className="bg-slate-950 text-white px-5 py-3 rounded-2xl flex items-center space-x-3 shadow-2xl shadow-slate-200">
             <Clock size={18} className="text-blue-400" />
             <span className="font-black text-lg tracking-tight">{currentTime}</span>
