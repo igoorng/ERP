@@ -100,15 +100,18 @@ export const onRequest: any = async (context: any) => {
     // 3. 库存 (Inventory) - 使用 AS 映射字段名
     if (path === '/inventory' && method === 'GET') {
       const date = url.searchParams.get('date');
+      const timestamp = url.searchParams.get('timestamp') || Date.now().toString();
       const { results } = await env.DB.prepare(`
-        SELECT id, material_id AS materialId, date, 
-        opening_stock AS openingStock, 
-        today_inbound AS todayInbound, 
-        workshop_outbound AS workshopOutbound, 
-        store_outbound AS storeOutbound, 
-        remaining_stock AS remainingStock 
-        FROM inventory WHERE date = ?
-      `).bind(date).all();
+        SELECT i.id, i.material_id AS materialId, i.date, 
+        i.opening_stock AS openingStock, 
+        i.today_inbound AS todayInbound, 
+        i.workshop_outbound AS workshopOutbound, 
+        i.store_outbound AS storeOutbound, 
+        i.remaining_stock AS remainingStock 
+        FROM inventory i
+        INNER JOIN materials m ON i.material_id = m.id
+        WHERE i.date = ? AND (m.deleted_at IS NULL OR m.deleted_at > ?)
+      `).bind(date, parseInt(timestamp)).all();
       return json(results);
     }
 

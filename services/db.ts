@@ -179,7 +179,7 @@ export const db = {
 
   // --- Inventory ---
   getInventoryForDate: async (date: string): Promise<DailyInventory[]> => {
-    const response = await fetch(`${API_BASE}/inventory?date=${date}`);
+    const response = await fetch(`${API_BASE}/inventory?date=${date}&timestamp=${Date.now()}`);
     return response.json();
   },
 

@@ -57,11 +57,12 @@ const ReportsView: React.FC = () => {
         return;
       }
 
-      // 核心修改：过滤掉在 materials 列表中找不到（即已被删除）的物料对应的库存记录
+      // 将库存数据与物料信息关联，生成导出数据
+      // 注意：后端API已自动过滤掉已删除物料的库存记录
       const exportData = inventory
         .map(item => {
           const mat = materials.find(m => m.id === item.materialId);
-          // 如果物料已被删除或不存在，则跳过
+          // 防御性检查：如果物料不存在，跳过
           if (!mat) return null;
 
           const row: any = {};
@@ -81,7 +82,7 @@ const ReportsView: React.FC = () => {
           });
           return row;
         })
-        .filter(row => row !== null); // 移除 null 记录
+        .filter(row => row !== null); // 移除 null 记录（防御性编程）
 
       if (exportData.length === 0) {
         alert(`${date} 选定日期的有效物料数据为空（可能所有记录的物料都已被删除）。`);
