@@ -43,10 +43,26 @@ const InventoryView: React.FC = () => {
         db.getInventoryForDatePaginated(date, page, pageSize, search, forceRefresh)
       ]);
       
-      setMaterials(matsData.materials);
+      // 收集库存数据中所有物料ID
+      const inventoryMaterialIds = new Set(invData.inventory.map(item => item.materialId));
+      const currentMaterialIds = new Set(matsData.materials.map(m => m.id));
+      
+      // 检查是否有缺失的物料
+      const missingIds = Array.from(inventoryMaterialIds).filter(id => !currentMaterialIds.has(id));
+      
+      let allMaterials = matsData.materials;
+      
+      // 如果有缺失的物料，加载所有物料数据
+      if (missingIds.length > 0) {
+        console.log(`Loading ${missingIds.length} missing materials:`, missingIds);
+        const allMatsData = await db.getMaterialsPaginated(1, 1000, date, search, forceRefresh);
+        allMaterials = allMatsData.materials;
+      }
+      
+      setMaterials(allMaterials);
       setInventory(invData.inventory);
-      setTotalItems(matsData.total);
-      setHasMore(matsData.hasMore);
+      setTotalItems(invData.total); // 使用库存总数而不是物料总数
+      setHasMore(invData.hasMore);
       setCurrentPage(page);
       
       // 清空选择（如果是新页面或搜索）
@@ -322,6 +338,18 @@ const InventoryView: React.FC = () => {
                 {filteredData.map(item => {
                   const mat = materials.find(m => m.id === item.materialId);
                   const isSelected = selectedIds.includes(item.materialId);
+                  
+                  // 如果找不到对应的物料，先显示加载状态
+                  if (!mat) {
+                    console.warn(`Material not found for ID: ${item.materialId}, loading...`);
+                    // 延迟加载缺失的物料数据
+                    setTimeout(() => {
+                      db.getMaterialsPaginated(1, 1000, date, '', false).then(matsData => {
+                        setMaterials(prev => [...prev, ...matsData.materials]);
+                      });
+                    }, 100);
+                  }
+                  
                   return (
                     <tr key={item.id} className={`hover:bg-gray-50/50 transition-colors ${isSelected ? 'bg-blue-50/30' : ''}`}>
                       <td className="px-6 py-5">
@@ -334,8 +362,17 @@ const InventoryView: React.FC = () => {
                         </button>
                       </td>
                       <td className="px-4 py-5">
-                        <div className="font-black text-gray-900">{mat?.name}</div>
-                        <div className="text-[10px] text-gray-400 uppercase">单位: {mat?.unit}</div>
+                        {mat ? (
+                          <>
+                            <div className="font-black text-gray-900">{mat.name}</div>
+                            <div className="text-[10px] text-gray-400 uppercase">单位: {mat.unit}</div>
+                          </>
+                        ) : (
+                          <div className="text-gray-400">
+                            <div className="font-mono text-xs">物料ID: {item.materialId}</div>
+                            <div className="text-[10px] animate-pulse">加载中...</div>
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-5 text-center font-mono font-black text-gray-400">{item.openingStock}</td>
                       <td className="px-6 py-5 text-center">
@@ -451,6 +488,17 @@ const InventoryView: React.FC = () => {
             {filteredData.map(item => {
               const mat = materials.find(m => m.id === item.materialId);
               const isSelected = selectedIds.includes(item.materialId);
+              
+              // 如果找不到对应的物料，先显示加载状态
+              if (!mat) {
+                console.warn(`Material not found for ID: ${item.materialId}, loading...`);
+                // 延迟加载缺失的物料数据
+                setTimeout(() => {
+                  db.getMaterialsPaginated(1, 1000, date, '', false).then(matsData => {
+                    setMaterials(prev => [...prev, ...matsData.materials]);
+                  });
+                }, 100);
+              }
               return (
                 <div key={item.id} className={`bg-white p-5 rounded-2xl shadow-sm border transition-all space-y-4 ${isSelected ? 'border-blue-200 ring-1 ring-blue-100' : 'border-gray-100'}`}>
                   <div className="flex justify-between items-start">
@@ -464,11 +512,21 @@ const InventoryView: React.FC = () => {
                         </button>
                       )}
                       <div>
-                        <h4 className="font-black text-gray-900 leading-tight">{mat?.name}</h4>
-                        <div className="flex items-center space-x-2 mt-1">
-                          <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">单位: {mat?.unit}</span>
-                          <span className="text-[10px] font-black text-gray-400">昨日库存: {item.openingStock}</span>
-                        </div>
+                        {mat ? (
+                          <>
+                            <h4 className="font-black text-gray-900 leading-tight">{mat.name}</h4>
+                            <div className="flex items-center space-x-2 mt-1">
+                              <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">单位: {mat.unit}</span>
+                              <span className="text-[10px] font-black text-gray-400">昨日库存: {item.openingStock}</span>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-gray-400">
+                            <div className="font-mono text-xs">物料ID: {item.materialId}</div>
+                            <div className="text-[10px] animate-pulse">加载中...</div>
+                            <div className="text-[10px] font-black text-gray-400">昨日库存: {item.openingStock}</div>
+                          </div>
+                        )}
                       </div>
                     </div>
                     {isToday && (
