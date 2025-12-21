@@ -4,12 +4,19 @@ import { Material, DailyInventory, AuditLog, User } from '../types';
 const API_BASE = '/api';
 
 export const db = {
-  // --- Time Utilities ---
+  // --- Time Utilities (强制亚洲/上海时区) ---
   getBeijingDate: (): string => {
-    const now = new Date();
-    const offset = 8 * 60;
-    const beijingTime = new Date(now.getTime() + (now.getTimezoneOffset() + offset) * 60000);
-    return beijingTime.toISOString().split('T')[0];
+    const formatter = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const parts = formatter.formatToParts(new Date());
+    const y = parts.find(p => p.type === 'year')?.value;
+    const m = parts.find(p => p.type === 'month')?.value;
+    const d = parts.find(p => p.type === 'day')?.value;
+    return `${y}-${m}-${d}`;
   },
 
   getBeijingTimestamp: (): string => {
@@ -25,7 +32,7 @@ export const db = {
     }).format(new Date());
   },
 
-  // --- Settings (Dynamic Config) ---
+  // --- Settings ---
   getSettings: async (): Promise<Record<string, string>> => {
     try {
       const response = await fetch(`${API_BASE}/settings`);
@@ -123,7 +130,7 @@ export const db = {
       body: JSON.stringify({ name, unit, initialStock, date })
     });
     const result = await response.json();
-    await db.logAction('CREATE', `新增物料: ${name}`);
+    await db.logAction('CREATE', `新增物料: ${name} (期初: ${initialStock})`);
     return result;
   },
 

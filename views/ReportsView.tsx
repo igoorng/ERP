@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { db } from '../services/db';
-import { Download, Calendar, FileSpreadsheet, CheckCircle, Circle } from 'lucide-react';
+import { Download, Calendar, FileSpreadsheet, CheckCircle, Circle, Loader2 } from 'lucide-react';
 
 declare const XLSX: any;
 
@@ -17,12 +17,16 @@ const AVAILABLE_COLUMNS = [
 ];
 
 const ReportsView: React.FC = () => {
-  // 获取当前的北京日期作为截止限制
-  const maxDate = useMemo(() => db.getBeijingDate(), []);
-  const [date, setDate] = useState(maxDate);
-  
-  // 默认仅选中 物料名称、物料单位、剩余库存
+  const [maxDate, setMaxDate] = useState(db.getBeijingDate());
+  const [date, setDate] = useState(db.getBeijingDate());
+  const [loading, setLoading] = useState(false);
   const [selectedCols, setSelectedCols] = useState<string[]>(['name', 'unit', 'remaining']);
+
+  useEffect(() => {
+    // 每次进入页面刷新一次最大日期
+    setMaxDate(db.getBeijingDate());
+    setDate(db.getBeijingDate());
+  }, []);
 
   const toggleColumn = (id: string) => {
     if (selectedCols.includes(id)) {
@@ -34,132 +38,148 @@ const ReportsView: React.FC = () => {
     }
   };
 
-  // Fixed: added async keyword to the function
   const exportDailyData = async () => {
-    // 额外校验：防止手动输入绕过 UI 限制
     if (date > maxDate) {
       alert("无法导出未来日期的报表");
       return;
     }
 
-    // Fixed: added await to resolve Promises returned by db calls
-    const materials = await db.getMaterials();
-    const inventory = await db.getInventoryForDate(date);
-    
-    const exportData = inventory.map(item => {
-      const mat = materials.find(m => m.id === item.materialId);
-      const row: any = {};
+    setLoading(true);
+    try {
+      const [materials, inventory] = await Promise.all([
+        db.getMaterials(),
+        db.getInventoryForDate(date)
+      ]);
       
-      AVAILABLE_COLUMNS.forEach(col => {
-        if (selectedCols.includes(col.id)) {
-          switch (col.id) {
-            case 'name': row[col.key] = mat?.name; break;
-            case 'unit': row[col.key] = mat?.unit; break;
-            case 'opening': row[col.key] = item.openingStock; break;
-            case 'inbound': row[col.key] = item.todayInbound; break;
-            case 'workshop': row[col.key] = item.workshopOutbound; break;
-            case 'store': row[col.key] = item.storeOutbound; break;
-            case 'remaining': row[col.key] = item.remainingStock; break;
-            case 'date': row[col.key] = item.date; break;
-          }
-        }
-      });
-      return row;
-    });
+      if (inventory.length === 0) {
+        alert(`${date} 暂无任何库存数据。`);
+        return;
+      }
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, `Inventory_${date}`);
-    
-    // 更新导出文件名
-    XLSX.writeFile(workbook, `数据统计_${date}.xlsx`);
-    
-    db.logAction('EXPORT', `导出报表: 日期 ${date}, 字段 [${selectedCols.join(', ')}]`);
+      const exportData = inventory.map(item => {
+        const mat = materials.find(m => m.id === item.materialId);
+        const row: any = {};
+        
+        AVAILABLE_COLUMNS.forEach(col => {
+          if (selectedCols.includes(col.id)) {
+            switch (col.id) {
+              case 'name': row[col.key] = mat?.name; break;
+              case 'unit': row[col.key] = mat?.unit; break;
+              case 'opening': row[col.key] = item.openingStock; break;
+              case 'inbound': row[col.key] = item.todayInbound; break;
+              case 'workshop': row[col.key] = item.workshopOutbound; break;
+              case 'store': row[col.key] = item.storeOutbound; break;
+              case 'remaining': row[col.key] = item.remainingStock; break;
+              case 'date': row[col.key] = item.date; break;
+            }
+          }
+        });
+        return row;
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, `Inventory_${date}`);
+      XLSX.writeFile(workbook, `MaterialFlow_Inventory_${date}.xlsx`);
+      
+      db.logAction('EXPORT', `导出报表: 日期 ${date}, 字段数 ${selectedCols.length}`);
+    } catch (e) {
+      alert('导出失败，请检查网络连接');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-        <div className="text-center mb-10">
-          <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
-            <FileSpreadsheet className="text-blue-600" size={32} />
+    <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500">
+      <div className="bg-white p-8 lg:p-12 rounded-[2.5rem] shadow-sm border border-gray-100 relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-500 to-indigo-600"></div>
+        
+        <div className="text-center mb-12">
+          <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-xl shadow-blue-50">
+            <FileSpreadsheet size={40} />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">定制报表导出</h2>
-          <p className="text-gray-500">灵活选择导出的物料字段与统计日期（仅限今日及以前）</p>
+          <h2 className="text-3xl font-black text-gray-900 mb-2">定制报表中心</h2>
+          <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Flexible Excel Report Generation</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-          {/* Settings Section */}
-          <div className="space-y-6">
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-3 uppercase tracking-wider">第一步：选择日期</label>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+          {/* 配置侧 */}
+          <div className="space-y-8">
+            <div className="space-y-3">
+              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">第一步：选择导出日期 (截止今日)</label>
+              <div className="relative group">
+                <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-500 transition-transform group-focus-within:scale-110" size={20} />
                 <input
                   type="date"
                   max={maxDate}
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold"
+                  className="w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:bg-white focus:border-blue-500 outline-none font-black text-gray-700 transition-all"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                 />
               </div>
-              <p className="mt-2 text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                * 最大可选日期为北京时间今日: {maxDate}
-              </p>
             </div>
 
             <button
               onClick={exportDailyData}
-              className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 flex items-center justify-center space-x-2 transform active:scale-95"
+              disabled={loading}
+              className={`
+                w-full py-5 bg-blue-600 text-white font-black rounded-2xl shadow-2xl shadow-blue-200 transition-all flex items-center justify-center space-x-3 transform active:scale-95
+                ${loading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'}
+              `}
             >
-              <Download size={20} />
-              <span>导出 Excel 报表</span>
+              {loading ? <Loader2 className="animate-spin" size={24} /> : <Download size={24} />}
+              <span className="text-lg">生成并导出 Excel</span>
             </button>
           </div>
 
-          {/* Column Picker Section */}
-          <div>
-            <label className="block text-sm font-bold text-gray-700 mb-3 uppercase tracking-wider">第二步：筛选导出字段</label>
-            <div className="grid grid-cols-2 gap-3">
+          {/* 字段侧 */}
+          <div className="space-y-4">
+            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">第二步：勾选需要导出的列</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {AVAILABLE_COLUMNS.map(col => {
                 const isSelected = selectedCols.includes(col.id);
                 return (
                   <button
                     key={col.id}
                     onClick={() => toggleColumn(col.id)}
-                    className={`flex items-center p-3 rounded-xl border transition-all text-sm font-medium ${
-                      isSelected 
-                        ? 'bg-blue-50 border-blue-200 text-blue-700' 
-                        : 'bg-white border-gray-100 text-gray-500 hover:border-gray-200'
-                    }`}
+                    className={`
+                      flex items-center p-4 rounded-2xl border-2 transition-all text-sm font-black
+                      ${isSelected 
+                        ? 'bg-blue-50 border-blue-600 text-blue-700 shadow-md shadow-blue-50' 
+                        : 'bg-white border-gray-100 text-gray-400 hover:border-gray-200'}
+                    `}
                   >
                     {isSelected ? (
-                      <CheckCircle size={16} className="mr-2 text-blue-600" />
+                      <CheckCircle size={18} className="mr-3 text-blue-600" />
                     ) : (
-                      <Circle size={16} className="mr-2 text-gray-300" />
+                      <Circle size={18} className="mr-3 text-gray-200" />
                     )}
                     {col.label}
                   </button>
                 );
               })}
             </div>
-            <p className="mt-4 text-xs text-gray-400 italic text-center">
-              注：至少需保留一个导出字段
+            <p className="text-[10px] text-gray-400 font-bold italic text-center mt-4">
+              * 建议至少保留“物料名称”与“剩余库存”
             </p>
           </div>
         </div>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-gray-50/50 p-5 rounded-xl border border-dashed border-gray-200">
-          <h4 className="font-bold text-gray-800 mb-2 flex items-center">
-            <CheckCircle size={16} className="mr-2 text-green-500" />
-            快速预览
-          </h4>
-          <p className="text-xs text-gray-500 leading-relaxed">
-            当前导出的文件将包含 <span className="text-blue-600 font-bold">{selectedCols.length}</span> 个列。
-            文件名格式为: <code className="bg-white px-1 rounded border">数据统计_{date}.xlsx</code>
-          </p>
+      <div className="bg-slate-900 p-6 rounded-[2rem] text-white flex items-center justify-between shadow-xl">
+        <div className="flex items-center space-x-4">
+           <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center">
+             <Download className="text-blue-400" size={20} />
+           </div>
+           <div>
+             <p className="text-xs font-black uppercase tracking-widest text-slate-500">导出预览预览</p>
+             <p className="text-sm font-bold">MaterialFlow_Inventory_{date}.xlsx</p>
+           </div>
+        </div>
+        <div className="text-right">
+           <p className="text-xs font-black text-slate-500 mb-1">选中字段数</p>
+           <span className="px-3 py-1 bg-blue-600 rounded-lg font-black text-xs">{selectedCols.length} Columns</span>
         </div>
       </div>
     </div>
