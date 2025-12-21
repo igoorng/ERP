@@ -23,7 +23,7 @@ const InventoryView: React.FC = () => {
   useEffect(() => {
     const interval = setInterval(() => {
       const currentBeijingDate = db.getBeijingDate();
-      // 如果当前显示的日期是旧的“今天”，则强制刷新到真实的“今天”
+      // 如果当前选中的是“今天”且北京时间跨天了，自动同步
       if (date !== currentBeijingDate && isToday) {
         setDate(currentBeijingDate);
       }
@@ -33,11 +33,17 @@ const InventoryView: React.FC = () => {
   }, [date, isToday]);
 
   const loadData = () => {
-    const mats = db.getMaterials();
+    // 获取该日期下“激活”且“已创建”的物料
+    const mats = db.getMaterials(date);
     setMaterials(mats);
     db.initializeDate(date);
     const dailyInv = db.getInventoryForDate(date);
-    setInventory(dailyInv);
+    
+    // 只保留在该日期可见的物料记录
+    const visibleMatIds = new Set(mats.map(m => m.id));
+    const filteredInv = dailyInv.filter(item => visibleMatIds.has(item.materialId));
+    
+    setInventory(filteredInv);
     setSelectedIds(new Set()); 
   };
 
@@ -73,11 +79,11 @@ const InventoryView: React.FC = () => {
 
   const handleDeleteMaterial = (id: string, name: string) => {
     if (!isToday) {
-      alert("仅能删除今日创建的物料数据，历史记录已被锁定。");
+      alert("历史数据已被锁定，无法删除。");
       return;
     }
-    if (window.confirm(`确定要彻底删除物料 "${name}" 及其所有历史库存吗？`)) {
-      db.deleteMaterial(id);
+    if (window.confirm(`确定要删除物料 "${name}" 吗？删除后该物料将从今日及以后的库存列表中消失，但历史数据保留。`)) {
+      db.deleteMaterial(id, date);
       loadData();
     }
   };
@@ -88,8 +94,8 @@ const InventoryView: React.FC = () => {
       alert("历史数据处于只读模式，无法执行批量删除。");
       return;
     }
-    if (window.confirm(`确定要批量删除选中的 ${selectedIds.size} 个物料吗？`)) {
-      db.deleteMaterials(Array.from(selectedIds));
+    if (window.confirm(`确定要从今日起删除选中的 ${selectedIds.size} 个物料吗？`)) {
+      db.deleteMaterials(Array.from(selectedIds), date);
       loadData(); 
     }
   };
@@ -215,7 +221,7 @@ const InventoryView: React.FC = () => {
       {!isToday && (
         <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl flex items-center space-x-3 text-amber-800 animate-in slide-in-from-top duration-300">
            <Lock size={18} className="flex-shrink-0" />
-           <p className="text-sm font-bold">您正在查看历史数据 ({date})。根据系统规则，只有北京时间当天的库存数据允许修改，历史数据已自动锁定为只读状态。</p>
+           <p className="text-sm font-bold">您正在查看历史数据 ({date})。根据系统规则，只有北京时间当天的库存数据允许修改，历史数据已自动锁定为只读状态。此外，该日期尚未创建的或已被删除的物料将不会显示。</p>
         </div>
       )}
 
@@ -231,7 +237,7 @@ const InventoryView: React.FC = () => {
           <div className="flex space-x-2">
             <button onClick={() => setSelectedIds(new Set())} className="px-4 py-2 text-xs font-bold text-gray-500 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">取消选择</button>
             <button onClick={handleBatchDelete} className="px-4 py-2 text-xs font-bold text-white bg-red-600 rounded-lg flex items-center shadow-sm shadow-red-200">
-              确认删除
+              批量删除
             </button>
           </div>
         </div>
@@ -263,7 +269,7 @@ const InventoryView: React.FC = () => {
                   <div className="flex flex-col items-center">
                     <Calculator size={48} className="mb-4 opacity-10" />
                     <p className="font-bold">该日期暂无物料数据</p>
-                    <p className="text-xs mt-1">请尝试切换日期或新增物料</p>
+                    <p className="text-xs mt-1">请尝试切换日期或在“今天”新增物料</p>
                   </div>
                 </td>
               </tr>
@@ -340,7 +346,7 @@ const InventoryView: React.FC = () => {
         {filteredData.length === 0 ? (
           <div className="py-20 text-center text-gray-400">
             <Calculator size={48} className="mx-auto mb-4 opacity-10" />
-            <p className="text-sm font-bold">该日期暂无物料记录</p>
+            <p className="text-sm font-bold">该日期暂无可见物料</p>
           </div>
         ) : (
           filteredData.map(item => {
@@ -469,7 +475,7 @@ const InventoryView: React.FC = () => {
                 <input name="unit" required className="w-full px-5 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl outline-none focus:border-blue-500 font-bold transition-all text-lg" placeholder="如: kg, 个, 箱" />
               </div>
               <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">昨日库存 (昨日) Yesterday Stock</label>
+                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">昨日库存 (仅限新增物料期初) Initial Stock</label>
                 <input name="initialStock" type="number" min="0" defaultValue="0" className="w-full px-5 py-4 bg-blue-50/50 border-2 border-blue-100 rounded-2xl outline-none focus:border-blue-500 text-3xl font-black text-blue-600 transition-all" />
               </div>
               <div className="pt-4 flex space-x-4">

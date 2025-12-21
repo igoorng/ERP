@@ -8,6 +8,7 @@ import InventoryView from './views/InventoryView';
 import ReportsView from './views/ReportsView';
 import LogsView from './views/LogsView';
 import Login from './views/Login';
+import StatisticsView from './views/StatisticsView';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(db.getCurrentUser());
@@ -46,6 +47,8 @@ const App: React.FC = () => {
         return <Dashboard />;
       case ViewMode.INVENTORY:
         return <InventoryView />;
+      case ViewMode.STATISTICS:
+        return <StatisticsView />;
       case ViewMode.REPORTS:
         return <ReportsView />;
       case ViewMode.LOGS:

@@ -8,7 +8,8 @@ import {
   History, 
   LogOut,
   Menu,
-  X
+  X,
+  BarChart3
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -23,10 +24,11 @@ const Layout: React.FC<LayoutProps> = ({ user, currentView, setView, onLogout, c
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const navItems = [
-    { id: ViewMode.DASHBOARD, label: '概览', icon: LayoutDashboard },
-    { id: ViewMode.INVENTORY, label: '物料管理', icon: Package },
-    { id: ViewMode.REPORTS, label: '报表导出', icon: FileText },
-    { id: ViewMode.LOGS, label: '操作日志', icon: History },
+    { id: ViewMode.DASHBOARD, label: '概览 Dashboard', icon: LayoutDashboard },
+    { id: ViewMode.INVENTORY, label: '物料管理 Inventory', icon: Package },
+    { id: ViewMode.STATISTICS, label: '数据统计 Statistics', icon: BarChart3 },
+    { id: ViewMode.REPORTS, label: '报表导出 Reports', icon: FileText },
+    { id: ViewMode.LOGS, label: '操作日志 Logs', icon: History },
   ];
 
   const handleNavClick = (view: ViewMode) => {
@@ -36,7 +38,7 @@ const Layout: React.FC<LayoutProps> = ({ user, currentView, setView, onLogout, c
 
   return (
     <div className="min-h-screen flex bg-gray-50 overflow-hidden">
-      {/* Mobile Sidebar Overlay/Backdrop */}
+      {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div 
           className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm lg:hidden transition-opacity"

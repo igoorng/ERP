@@ -9,7 +9,8 @@ export interface Material {
   id: string;
   name: string;
   unit: string;
-  createdAt: string;
+  createdAt: string; // YYYY-MM-DD
+  deletedAt?: string; // YYYY-MM-DD (逻辑删除日期)
 }
 
 export interface DailyInventory {
@@ -35,6 +36,7 @@ export interface AuditLog {
 export enum ViewMode {
   DASHBOARD = 'DASHBOARD',
   INVENTORY = 'INVENTORY',
+  STATISTICS = 'STATISTICS',
   REPORTS = 'REPORTS',
   LOGS = 'LOGS',
   SETTINGS = 'SETTINGS'
