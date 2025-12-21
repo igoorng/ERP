@@ -21,7 +21,7 @@ const ReportsView: React.FC = () => {
   const maxDate = useMemo(() => db.getBeijingDate(), []);
   const [date, setDate] = useState(maxDate);
   
-  // 修改：默认仅选中 物料名称、物料单位、剩余库存
+  // 默认仅选中 物料名称、物料单位、剩余库存
   const [selectedCols, setSelectedCols] = useState<string[]>(['name', 'unit', 'remaining']);
 
   const toggleColumn = (id: string) => {
@@ -68,7 +68,9 @@ const ReportsView: React.FC = () => {
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, `Inventory_${date}`);
-    XLSX.writeFile(workbook, `Inventory_Report_${date}.xlsx`);
+    
+    // 更新导出文件名
+    XLSX.writeFile(workbook, `数据统计_${date}.xlsx`);
     
     db.logAction('EXPORT', `导出报表: 日期 ${date}, 字段 [${selectedCols.join(', ')}]`);
   };

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../services/db';
 import { config } from '../services/config';
 import { Material, DailyInventory } from '../types';
-import { Plus, Search, Upload, Trash2, X, CheckSquare, Square, Calculator, Calendar as CalendarIcon } from 'lucide-react';
+import { Plus, Search, Upload, Trash2, X, CheckSquare, Square, Calculator, Calendar as CalendarIcon, Lock } from 'lucide-react';
 
 declare const XLSX: any;
 
@@ -16,30 +16,21 @@ const InventoryView: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  // 权限判断：当前选中的日期是否为北京时间的“今天”
+  const isToday = useMemo(() => date === db.getBeijingDate(), [date]);
+
   // 动态同步北京日期：防止跨天时系统时间不更新
   useEffect(() => {
     const interval = setInterval(() => {
       const currentBeijingDate = db.getBeijingDate();
-      // 只有当用户没有手动选择日期（即当前显示的仍是“今天”）时，才进行自动跨天更新
-      // 或者更简单的逻辑：如果当前选中的日期和实际北京日期不符，且系统刚刚过零点，则更新
-      // 这里采用保守策略：如果当前 state 是之前的“今天”，则更新为新的“今天”
-      if (date === currentBeijingDate) return;
-      
-      // 如果日期变了，且当前页面没有在操作（比如没打开弹窗），则可以考虑自动同步
-      // 为了用户体验，我们主要确保初始加载和手动刷新是准确的
-      // 这里我们强制同步最新的北京日期
-      setTodayToCurrent();
+      // 如果当前显示的日期是旧的“今天”，则强制刷新到真实的“今天”
+      if (date !== currentBeijingDate && isToday) {
+        setDate(currentBeijingDate);
+      }
     }, 10000); 
 
     return () => clearInterval(interval);
-  }, [date]);
-
-  const setTodayToCurrent = () => {
-    const now = db.getBeijingDate();
-    if (date !== now) {
-      setDate(now);
-    }
-  };
+  }, [date, isToday]);
 
   const loadData = () => {
     const mats = db.getMaterials();
@@ -63,6 +54,9 @@ const InventoryView: React.FC = () => {
   }, [inventory, materials, searchTerm]);
 
   const handleInputChange = (materialId: string, field: keyof DailyInventory, value: string) => {
+    // 权限校验：非今日不可修改
+    if (!isToday) return;
+
     const numValue = Math.max(0, parseInt(value) || 0);
     const updatedInventory = inventory.map(item => {
       if (item.materialId === materialId) {
@@ -78,7 +72,11 @@ const InventoryView: React.FC = () => {
   };
 
   const handleDeleteMaterial = (id: string, name: string) => {
-    if (window.confirm(`确定要删除物料 "${name}" 吗？`)) {
+    if (!isToday) {
+      alert("仅能删除今日创建的物料数据，历史记录已被锁定。");
+      return;
+    }
+    if (window.confirm(`确定要彻底删除物料 "${name}" 及其所有历史库存吗？`)) {
       db.deleteMaterial(id);
       loadData();
     }
@@ -86,7 +84,11 @@ const InventoryView: React.FC = () => {
 
   const handleBatchDelete = () => {
     if (selectedIds.size === 0) return;
-    if (window.confirm(`确定要删除选中的 ${selectedIds.size} 个物料吗？`)) {
+    if (!isToday) {
+      alert("历史数据处于只读模式，无法执行批量删除。");
+      return;
+    }
+    if (window.confirm(`确定要批量删除选中的 ${selectedIds.size} 个物料吗？`)) {
       db.deleteMaterials(Array.from(selectedIds));
       loadData(); 
     }
@@ -117,6 +119,10 @@ const InventoryView: React.FC = () => {
   const isAllSelected = filteredData.length > 0 && filteredData.every(item => selectedIds.has(item.materialId));
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isToday) {
+      alert("只能在今日日期下进行物料导入。");
+      return;
+    }
     const file = e.target.files?.[0];
     if (!file) return;
     
@@ -171,30 +177,33 @@ const InventoryView: React.FC = () => {
         <div className="flex items-center space-x-2">
           {/* Date Picker with Today Indicator */}
           <div className="flex-1 lg:flex-none relative group">
-             <div className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-500 pointer-events-none">
-                <CalendarIcon size={16} />
+             <div className={`absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none ${isToday ? 'text-blue-500' : 'text-amber-500'}`}>
+                {isToday ? <CalendarIcon size={16} /> : <Lock size={16} />}
              </div>
              <input
               type="date"
-              className="w-full lg:w-auto pl-10 pr-4 py-3 bg-blue-50/50 border border-blue-100 rounded-xl font-black text-blue-700 outline-none text-sm transition-all focus:ring-2 focus:ring-blue-500"
+              className={`w-full lg:w-auto pl-10 pr-4 py-3 border rounded-xl font-black outline-none text-sm transition-all focus:ring-2 focus:ring-blue-500 ${isToday ? 'bg-blue-50/50 border-blue-100 text-blue-700' : 'bg-amber-50/50 border-amber-100 text-amber-700'}`}
               value={date}
               max={db.getBeijingDate()}
               onChange={(e) => setDate(e.target.value)}
             />
-            {date === db.getBeijingDate() && (
-              <span className="absolute -top-2 -right-1 bg-green-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full shadow-sm">今日</span>
+            {isToday ? (
+              <span className="absolute -top-2 -right-1 bg-green-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full shadow-sm animate-pulse">今日编辑</span>
+            ) : (
+              <span className="absolute -top-2 -right-1 bg-amber-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full shadow-sm">只读查询</span>
             )}
           </div>
 
-          <label className="hidden lg:flex items-center px-5 py-3 bg-indigo-50 text-indigo-600 rounded-xl cursor-pointer hover:bg-indigo-100 transition-all font-bold shadow-sm border border-indigo-100 text-sm">
+          <label className={`hidden lg:flex items-center px-5 py-3 rounded-xl transition-all font-bold shadow-sm border text-sm ${isToday ? 'bg-indigo-50 text-indigo-600 border-indigo-100 cursor-pointer hover:bg-indigo-100' : 'bg-gray-50 text-gray-400 border-gray-100 cursor-not-allowed'}`}>
             <Upload size={16} className="mr-2" />
             Excel导入
-            <input type="file" className="hidden" accept=".xlsx, .xls" onChange={handleFileUpload} />
+            <input type="file" className="hidden" accept=".xlsx, .xls" onChange={handleFileUpload} disabled={!isToday} />
           </label>
 
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="hidden lg:flex items-center px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-bold shadow-lg shadow-blue-200 text-sm"
+            disabled={!isToday}
+            className={`hidden lg:flex items-center px-6 py-3 rounded-xl transition-all font-bold text-sm ${isToday ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-200' : 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none'}`}
           >
             <Plus size={16} className="mr-2" />
             新增物料
@@ -202,8 +211,16 @@ const InventoryView: React.FC = () => {
         </div>
       </div>
 
+      {/* Read-only Notice */}
+      {!isToday && (
+        <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl flex items-center space-x-3 text-amber-800 animate-in slide-in-from-top duration-300">
+           <Lock size={18} className="flex-shrink-0" />
+           <p className="text-sm font-bold">您正在查看历史数据 ({date})。根据系统规则，只有北京时间当天的库存数据允许修改，历史数据已自动锁定为只读状态。</p>
+        </div>
+      )}
+
       {/* Batch Actions Bar */}
-      {selectedIds.size > 0 && (
+      {selectedIds.size > 0 && isToday && (
         <div className="bg-white p-3 rounded-xl border border-red-100 flex items-center justify-between animate-in slide-in-from-top duration-300 shadow-sm">
           <div className="flex items-center">
             <div className="w-8 h-8 bg-red-50 rounded-lg flex items-center justify-center mr-3">
@@ -271,39 +288,44 @@ const InventoryView: React.FC = () => {
                       <input
                         type="number"
                         min="0"
+                        disabled={!isToday}
                         value={item.todayInbound}
                         onChange={(e) => handleInputChange(item.materialId, 'todayInbound', e.target.value)}
-                        className="w-24 px-3 py-2 border border-blue-100 rounded-xl text-center font-bold text-blue-600 bg-blue-50/20 focus:bg-white outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                        className={`w-24 px-3 py-2 border rounded-xl text-center font-bold outline-none transition-all ${isToday ? 'border-blue-100 text-blue-600 bg-blue-50/20 focus:bg-white focus:ring-2 focus:ring-blue-500' : 'border-gray-50 bg-gray-50 text-gray-400 cursor-not-allowed'}`}
                       />
                     </td>
                     <td className="px-6 py-4 text-center">
                       <input
                         type="number"
                         min="0"
+                        disabled={!isToday}
                         value={item.workshopOutbound}
                         onChange={(e) => handleInputChange(item.materialId, 'workshopOutbound', e.target.value)}
-                        className="w-24 px-3 py-2 border border-orange-100 rounded-xl text-center font-bold text-orange-600 bg-orange-50/20 focus:bg-white outline-none focus:ring-2 focus:ring-orange-500 transition-all"
+                        className={`w-24 px-3 py-2 border rounded-xl text-center font-bold outline-none transition-all ${isToday ? 'border-orange-100 text-orange-600 bg-orange-50/20 focus:bg-white focus:ring-2 focus:ring-orange-500' : 'border-gray-50 bg-gray-50 text-gray-400 cursor-not-allowed'}`}
                       />
                     </td>
                     <td className="px-6 py-4 text-center">
                       <input
                         type="number"
                         min="0"
+                        disabled={!isToday}
                         value={item.storeOutbound}
                         onChange={(e) => handleInputChange(item.materialId, 'storeOutbound', e.target.value)}
-                        className="w-24 px-3 py-2 border border-purple-100 rounded-xl text-center font-bold text-purple-600 bg-purple-50/20 focus:bg-white outline-none focus:ring-2 focus:ring-purple-500 transition-all"
+                        className={`w-24 px-3 py-2 border rounded-xl text-center font-bold outline-none transition-all ${isToday ? 'border-purple-100 text-purple-600 bg-purple-50/20 focus:bg-white focus:ring-2 focus:ring-purple-500' : 'border-gray-50 bg-gray-50 text-gray-400 cursor-not-allowed'}`}
                       />
                     </td>
                     <td className="px-6 py-4 text-center font-black text-blue-800 bg-blue-50/30 text-lg">
                       {item.remainingStock}
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <button 
-                        onClick={() => handleDeleteMaterial(item.materialId, mat.name)} 
-                        className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                      >
-                        <Trash2 size={18} />
-                      </button>
+                      {isToday && (
+                        <button 
+                          onClick={() => handleDeleteMaterial(item.materialId, mat.name)} 
+                          className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -338,9 +360,11 @@ const InventoryView: React.FC = () => {
                       <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mt-1">单位: {mat.unit}</p>
                     </div>
                   </div>
-                  <button onClick={() => handleDeleteMaterial(item.materialId, mat.name)} className="p-2 text-gray-300 active:text-red-500 bg-gray-50 rounded-full">
-                    <Trash2 size={20} />
-                  </button>
+                  {isToday && (
+                    <button onClick={() => handleDeleteMaterial(item.materialId, mat.name)} className="p-2 text-gray-300 active:text-red-500 bg-gray-50 rounded-full">
+                      <Trash2 size={20} />
+                    </button>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-4 gap-3 mb-5">
@@ -350,33 +374,36 @@ const InventoryView: React.FC = () => {
                    </div>
                    <div className="col-span-3 grid grid-cols-3 gap-2">
                      <div className="text-center">
-                        <label className="block text-[10px] text-blue-600 font-black mb-1.5 uppercase">入库</label>
+                        <label className={`block text-[10px] font-black mb-1.5 uppercase ${isToday ? 'text-blue-600' : 'text-gray-400'}`}>入库</label>
                         <input
                           type="number"
                           inputMode="numeric"
+                          disabled={!isToday}
                           value={item.todayInbound}
                           onChange={(e) => handleInputChange(item.materialId, 'todayInbound', e.target.value)}
-                          className="w-full py-3 bg-blue-50 border-2 border-blue-100 rounded-2xl text-center font-black text-blue-700 outline-none focus:border-blue-500 transition-all text-lg"
+                          className={`w-full py-3 border-2 rounded-2xl text-center font-black outline-none transition-all text-lg ${isToday ? 'bg-blue-50 border-blue-100 text-blue-700 focus:border-blue-500' : 'bg-gray-50 border-gray-50 text-gray-400 cursor-not-allowed'}`}
                         />
                      </div>
                      <div className="text-center">
-                        <label className="block text-[10px] text-orange-600 font-black mb-1.5 uppercase">车间</label>
+                        <label className={`block text-[10px] font-black mb-1.5 uppercase ${isToday ? 'text-orange-600' : 'text-gray-400'}`}>车间</label>
                         <input
                           type="number"
                           inputMode="numeric"
+                          disabled={!isToday}
                           value={item.workshopOutbound}
                           onChange={(e) => handleInputChange(item.materialId, 'workshopOutbound', e.target.value)}
-                          className="w-full py-3 bg-orange-50 border-2 border-orange-100 rounded-2xl text-center font-black text-orange-700 outline-none focus:border-orange-500 transition-all text-lg"
+                          className={`w-full py-3 border-2 rounded-2xl text-center font-black outline-none transition-all text-lg ${isToday ? 'bg-orange-50 border-orange-100 text-orange-700 focus:border-orange-500' : 'bg-gray-50 border-gray-50 text-gray-400 cursor-not-allowed'}`}
                         />
                      </div>
                      <div className="text-center">
-                        <label className="block text-[10px] text-purple-600 font-black mb-1.5 uppercase">店面</label>
+                        <label className={`block text-[10px] font-black mb-1.5 uppercase ${isToday ? 'text-purple-600' : 'text-gray-400'}`}>店面</label>
                         <input
                           type="number"
                           inputMode="numeric"
+                          disabled={!isToday}
                           value={item.storeOutbound}
                           onChange={(e) => handleInputChange(item.materialId, 'storeOutbound', e.target.value)}
-                          className="w-full py-3 bg-purple-50 border-2 border-purple-100 rounded-2xl text-center font-black text-purple-700 outline-none focus:border-purple-500 transition-all text-lg"
+                          className={`w-full py-3 border-2 rounded-2xl text-center font-black outline-none transition-all text-lg ${isToday ? 'bg-purple-50 border-purple-100 text-purple-700 focus:border-purple-500' : 'bg-gray-50 border-gray-50 text-gray-400 cursor-not-allowed'}`}
                         />
                      </div>
                    </div>
@@ -400,14 +427,16 @@ const InventoryView: React.FC = () => {
         )}
       </div>
 
-      {/* Floating Action Button (Mobile) */}
-      <button
-        onClick={() => setIsAddModalOpen(true)}
-        className="lg:hidden fixed bottom-8 right-6 w-16 h-16 bg-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 active:bg-blue-700 transition-all z-50 border-4 border-white"
-        aria-label="新增物料"
-      >
-        <Plus size={32} strokeWidth={3} />
-      </button>
+      {/* Floating Action Button (Mobile) - Only visible when today */}
+      {isToday && (
+        <button
+          onClick={() => setIsAddModalOpen(true)}
+          className="lg:hidden fixed bottom-8 right-6 w-16 h-16 bg-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 active:bg-blue-700 transition-all z-50 border-4 border-white"
+          aria-label="新增物料"
+        >
+          <Plus size={32} strokeWidth={3} />
+        </button>
+      )}
 
       {/* Add Modal */}
       {isAddModalOpen && (
