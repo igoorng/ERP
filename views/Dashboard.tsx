@@ -2,7 +2,7 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import { db } from '../services/db';
 import { config } from '../services/config';
-import { Package, TrendingUp, TrendingDown, ShoppingBag, AlertTriangle, Clock } from 'lucide-react';
+import { Package, TrendingUp, TrendingDown, ShoppingBag, AlertTriangle, Clock, ShieldAlert } from 'lucide-react';
 import { 
   BarChart, 
   Bar, 
@@ -124,13 +124,13 @@ const Dashboard: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* 核心图表 */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+        <div className="lg:col-span-2 bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h3 className="font-black text-gray-900 tracking-tight">库存量前8名</h3>
+              <h3 className="font-black text-gray-900 tracking-tight text-lg">库存量前8名</h3>
               <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">Stock Ranking (Top 8)</p>
             </div>
-            <div className="flex items-center space-x-1.5 bg-green-50 px-3 py-1 rounded-full">
+            <div className="flex items-center space-x-1.5 bg-green-50 px-3 py-1.5 rounded-full border border-green-100">
               <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
               <span className="text-[10px] font-black text-green-600">北京时间实时同步</span>
             </div>
@@ -166,18 +166,25 @@ const Dashboard: React.FC = () => {
         </div>
 
         {/* 缺料预警面板 */}
-        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex flex-col">
-          <h3 className="font-black text-gray-900 mb-6 flex items-center">
-            <AlertTriangle size={20} className="mr-2 text-red-500" />
-            今日缺料预警
-          </h3>
-          <div className="space-y-3 flex-1 overflow-y-auto pr-1">
+        <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="font-black text-gray-900 flex items-center text-lg">
+              <AlertTriangle size={22} className="mr-2 text-red-500" />
+              缺料预警
+            </h3>
+            <span className="px-2 py-1 bg-red-50 text-red-600 text-[10px] font-black rounded-lg border border-red-100 uppercase tracking-tighter">
+              Critical Alert
+            </span>
+          </div>
+          
+          <div className="space-y-3 flex-1 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-gray-200">
             {inventory.filter(i => i.remainingStock < config.LOW_STOCK_THRESHOLD).length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full py-10 opacity-40">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                  <Package size={32} className="text-gray-400" />
+                <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+                  <Package size={36} className="text-gray-300" />
                 </div>
                 <p className="text-sm text-gray-500 font-bold">暂无库存告急物料</p>
+                <p className="text-[10px] text-gray-400 mt-1">目前所有物料均在安全范围内</p>
               </div>
             ) : (
               inventory
@@ -186,14 +193,15 @@ const Dashboard: React.FC = () => {
                 .map(item => {
                   const mat = materials.find(m => m.id === item.materialId);
                   return (
-                    <div key={item.id} className="group flex items-center justify-between p-4 bg-red-50/40 rounded-2xl border border-red-100/50 hover:bg-red-50 transition-colors">
+                    <div key={item.id} className="group flex items-center justify-between p-4 bg-red-50/40 rounded-2xl border border-red-100/50 hover:bg-red-50 transition-all hover:translate-x-1">
                       <div>
                         <p className="font-black text-red-900 leading-none mb-1.5">{mat?.name}</p>
-                        <p className="text-[10px] font-black text-red-600 uppercase tracking-widest">
+                        <p className="text-[10px] font-black text-red-600 uppercase tracking-widest flex items-center">
+                          <ShieldAlert size={10} className="mr-1" />
                           当前剩余: {item.remainingStock} {mat?.unit}
                         </p>
                       </div>
-                      <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-red-500 shadow-sm group-hover:scale-110 transition-transform">
+                      <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-red-500 shadow-sm group-hover:scale-110 group-hover:bg-red-500 group-hover:text-white transition-all">
                         <AlertTriangle size={18} />
                       </div>
                     </div>
@@ -201,8 +209,18 @@ const Dashboard: React.FC = () => {
                 })
             )}
           </div>
+          
+          {/* 这里是您要求的修改：阈值文字提示 */}
           <div className="mt-6 pt-4 border-t border-gray-50">
-             <p className="text-[10px] text-gray-400 font-bold text-center">阈值设定: 低于 {config.LOW_STOCK_THRESHOLD} 即触发告警</p>
+             <div className="flex items-center justify-center space-x-2 bg-gray-50 py-3 rounded-2xl">
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                <p className="text-[11px] text-gray-500 font-black uppercase tracking-tight">
+                  告警阈值设定: 低于 <span className="text-blue-600 text-sm mx-0.5 underline decoration-2 underline-offset-4">{config.LOW_STOCK_THRESHOLD}</span> 即触发预警
+                </p>
+             </div>
+             <p className="text-[9px] text-gray-400 font-bold text-center mt-2 uppercase tracking-widest opacity-60">
+               Threshold defined by VITE_LOW_STOCK_THRESHOLD
+             </p>
           </div>
         </div>
       </div>
@@ -218,14 +236,14 @@ const StatCard = ({ label, value, subLabel, icon, color }: any) => {
     purple: 'bg-purple-50 text-purple-600'
   };
   return (
-    <div className="bg-white p-4 lg:p-6 rounded-[2rem] shadow-sm border border-gray-100 flex items-center space-x-4">
+    <div className="bg-white p-4 lg:p-6 rounded-[2rem] shadow-sm border border-gray-100 flex items-center space-x-4 hover:shadow-md transition-shadow">
       <div className={`w-12 h-12 lg:w-14 lg:h-14 rounded-2xl flex items-center justify-center flex-shrink-0 ${iconBg[color] || 'bg-gray-50 text-gray-600'}`}>
         {icon}
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 truncate">{label}</p>
         <div className="flex items-baseline space-x-1">
-          <h4 className="text-xl lg:text-2xl font-black text-gray-900 leading-none">{value}</h4>
+          <h4 className="text-xl lg:text-2xl font-black text-gray-900 leading-none tracking-tighter">{value}</h4>
           <span className="text-[10px] font-bold text-gray-400">{subLabel}</span>
         </div>
       </div>
