@@ -6,7 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "setup-kv": "chmod +x scripts/setup-kv.sh && ./scripts/setup-kv.sh",
+    "deploy": "wrangler pages deploy dist --project-name=material-flow-pro",
+    "deploy-preview": "wrangler pages deploy dist --project-name=material-flow-pro --preview",
+    "kv-stats": "wrangler kv:namespace inspect MATERIALFLOW_CACHE",
+    "kv-clear": "wrangler kv:key list --namespace-id=$(grep -o 'id = \"[^\"]*\"' wrangler.toml | head -1 | sed 's/id = \"//;s/\"//') | xargs -I {} wrangler kv:key delete {} --namespace-id=$(grep -o 'id = \"[^\"]*\"' wrangler.toml | head -1 | sed 's/id = \"//;s/\"//')"
   },
   "dependencies": {
     "react": "^19.2.3",

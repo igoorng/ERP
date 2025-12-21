@@ -1,11 +1,19 @@
 
 import { Material, DailyInventory, AuditLog, User } from '../types';
+import { withPerformanceMonitoring } from './monitoring';
 
 const API_BASE = '/api';
 
 const DEFAULT_SETTINGS = {
   LOW_STOCK_THRESHOLD: '10',
   SYSTEM_NAME: 'MaterialFlow Pro'
+};
+
+// 缓存配置
+const CACHE_CONFIG = {
+  STATIC_DATA_TTL: 2 * 60 * 60 * 1000, // 2小时
+  QUERY_DATA_TTL: 30 * 60 * 1000,     // 30分钟
+  PAGINATION_TTL: 15 * 60 * 1000     // 15分钟
 };
 
 // 缓存系统
@@ -217,6 +225,8 @@ export const db = {
   // 缓存管理
   clearCache: (): void => {
     dataCache.clear();
+    // 通知服务器清除KV缓存
+    fetch(`${API_BASE}/cache/clear`, { method: 'POST' }).catch(() => {});
   },
 
   clearCacheForDate: (date: string): void => {
@@ -232,6 +242,13 @@ export const db = {
       }
     }
     keysToDelete.forEach(key => dataCache.delete(key));
+    
+    // 通知服务器清除相关KV缓存
+    fetch(`${API_BASE}/cache/clear`, { 
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ patterns: ['materials:', 'inventory:'], date })
+    }).catch(() => {});
   },
 
   // --- Materials ---
@@ -250,12 +267,21 @@ export const db = {
       const ts = db.getBeijingDayEndTimestamp(date);
       url += `?timestamp=${ts}`;
     }
-    const response = await fetch(url);
+    
+    const endpoint = `GET /materials${date ? `?date=${date}` : ''}`;
+    
+    const response = await fetch(url, {
+      headers: {
+        'X-Cache-Bypass': forceRefresh ? 'true' : 'false',
+        'X-Request-ID': crypto.randomUUID ? crypto.randomUUID() : Date.now().toString()
+      }
+    });
     const data = await response.json();
     
-    // 缓存数据
-    dataCache.set(cacheKey, data);
-    return data;
+    // 缓存数据（使用更长的TTL，因为后端有KV缓存）
+    dataCache.set(cacheKey, data, CACHE_CONFIG.STATIC_DATA_TTL);
+    
+    return withPerformanceMonitoring(endpoint, () => Promise.resolve(data), false);
   },
 
   // 分页获取物料
@@ -286,11 +312,16 @@ export const db = {
     
     // 从服务器获取数据
     const url = `${API_BASE}/materials/paginated?${params.toString()}`;
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: {
+        'X-Cache-Bypass': forceRefresh ? 'true' : 'false',
+        'X-Request-ID': crypto.randomUUID ? crypto.randomUUID() : Date.now().toString()
+      }
+    });
     const data = await response.json();
     
-    // 缓存数据
-    dataCache.set(cacheKey, data);
+    // 缓存数据（使用分页TTL）
+    dataCache.set(cacheKey, data, CACHE_CONFIG.PAGINATION_TTL);
     return data;
   },
 
@@ -349,11 +380,16 @@ export const db = {
     }
     
     // 从服务器获取数据
-    const response = await fetch(`${API_BASE}/inventory?date=${date}&timestamp=${Date.now()}`);
+    const response = await fetch(`${API_BASE}/inventory?date=${date}&timestamp=${Date.now()}`, {
+      headers: {
+        'X-Cache-Bypass': forceRefresh ? 'true' : 'false',
+        'X-Request-ID': crypto.randomUUID ? crypto.randomUUID() : Date.now().toString()
+      }
+    });
     const data = await response.json();
     
-    // 缓存数据
-    dataCache.set(cacheKey, data);
+    // 缓存数据（使用查询TTL）
+    dataCache.set(cacheKey, data, CACHE_CONFIG.QUERY_DATA_TTL);
     return data;
   },
 
@@ -380,11 +416,16 @@ export const db = {
     
     // 从服务器获取数据
     const url = `${API_BASE}/inventory/paginated?${params.toString()}`;
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: {
+        'X-Cache-Bypass': forceRefresh ? 'true' : 'false',
+        'X-Request-ID': crypto.randomUUID ? crypto.randomUUID() : Date.now().toString()
+      }
+    });
     const data = await response.json();
     
-    // 缓存数据
-    dataCache.set(cacheKey, data);
+    // 缓存数据（使用分页TTL）
+    dataCache.set(cacheKey, data, CACHE_CONFIG.PAGINATION_TTL);
     return data;
   },
 

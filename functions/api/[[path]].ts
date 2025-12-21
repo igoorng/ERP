@@ -1,4 +1,44 @@
 
+// KV 缓存管理器
+class KVCacheManager {
+  constructor(private kv: KVNamespace) {}
+
+  async get<T>(key: string): Promise<T | null> {
+    try {
+      const value = await this.kv.get(key);
+      return value ? JSON.parse(value) : null;
+    } catch (error) {
+      console.log('KV get error:', error);
+      return null;
+    }
+  }
+
+  async set<T>(key: string, data: T, ttl = 3600): Promise<void> {
+    try {
+      await this.kv.put(key, JSON.stringify(data), { expirationTtl: ttl });
+    } catch (error) {
+      console.log('KV set error:', error);
+    }
+  }
+
+  async delete(key: string): Promise<void> {
+    try {
+      await this.kv.delete(key);
+    } catch (error) {
+      console.log('KV delete error:', error);
+    }
+  }
+
+  async deletePattern(pattern: string): Promise<void> {
+    try {
+      const list = await this.kv.list({ prefix: pattern });
+      await Promise.all(list.keys.map(key => this.kv.delete(key.name)));
+    } catch (error) {
+      console.log('KV deletePattern error:', error);
+    }
+  }
+}
+
 export const onRequest: any = async (context: any) => {
   const { request, env } = context;
   const url = new URL(request.url);
@@ -14,6 +54,9 @@ export const onRequest: any = async (context: any) => {
   if (!env.DB) {
     return json({ error: 'Database binding missing' }, 500);
   }
+
+  // 初始化 KV 缓存管理器
+  const cache = env.CACHE_KV ? new KVCacheManager(env.CACHE_KV) : null;
 
   try {
     // 1. 初始化与验证
@@ -57,9 +100,18 @@ export const onRequest: any = async (context: any) => {
       return user ? json(user) : json({ error: 'Unauthorized' }, 401);
     }
 
-    // 2. 物料 (Materials) - 使用 AS 映射
+    // 2. 物料 (Materials) - 使用 AS 映射和 KV 缓存
     if (path === '/materials' && method === 'GET') {
       const timestamp = url.searchParams.get('timestamp');
+      const cacheKey = `materials:all:${timestamp || 'current'}`;
+      
+      // 尝试从 KV 缓存获取
+      if (cache) {
+        const cached = await cache.get(cacheKey);
+        if (cached) return json(cached);
+      }
+      
+      // 从数据库查询
       let query = "SELECT id, name, unit, created_at AS createdAt, deleted_at AS deletedAt FROM materials";
       let params: any[] = [];
 
@@ -71,6 +123,12 @@ export const onRequest: any = async (context: any) => {
       }
 
       const { results } = await env.DB.prepare(query).bind(...params).all();
+      
+      // 存入 KV 缓存（2小时TTL）
+      if (cache) {
+        await cache.set(cacheKey, results, 7200);
+      }
+      
       return json(results);
     }
 
@@ -80,6 +138,14 @@ export const onRequest: any = async (context: any) => {
       const pageSize = parseInt(url.searchParams.get('pageSize') || '20');
       const timestamp = url.searchParams.get('timestamp');
       const search = url.searchParams.get('search');
+      
+      const cacheKey = `materials:page:${page}:${pageSize}:${timestamp || 'current'}:${search || ''}`;
+      
+      // 尝试从 KV 缓存获取（15分钟TTL）
+      if (cache) {
+        const cached = await cache.get(cacheKey);
+        if (cached) return json(cached);
+      }
       
       const offset = (page - 1) * pageSize;
       
@@ -115,13 +181,20 @@ export const onRequest: any = async (context: any) => {
       
       const hasMore = (offset + results.length) < total;
       
-      return json({
+      const responseData = {
         materials: results,
         total,
         hasMore,
         page,
         pageSize
-      });
+      };
+      
+      // 存入 KV 缓存（15分钟TTL）
+      if (cache) {
+        await cache.set(cacheKey, responseData, 900);
+      }
+      
+      return json(responseData);
     }
 
     if (path === '/materials' && method === 'POST') {
@@ -132,6 +205,15 @@ export const onRequest: any = async (context: any) => {
       await env.DB.prepare("INSERT INTO inventory (id, material_id, date, opening_stock, today_inbound, workshop_outbound, store_outbound, remaining_stock) VALUES (?, ?, ?, ?, 0, 0, 0, ?)")
         .bind(crypto.randomUUID(), id, date, initialStock, initialStock).run();
       
+      // 清除相关缓存
+      if (cache) {
+        await Promise.all([
+          cache.deletePattern('materials:'),
+          cache.deletePattern('inventory:page:'),
+          cache.delete(`inventory:daily:${date}`)
+        ]);
+      }
+      
       return json({ id, name, unit, createdAt: timestamp });
     }
 
@@ -140,13 +222,31 @@ export const onRequest: any = async (context: any) => {
       for (const id of ids) {
         await env.DB.prepare("UPDATE materials SET deleted_at = ? WHERE id = ?").bind(timestamp, id).run();
       }
+      
+      // 清除相关缓存
+      if (cache) {
+        await Promise.all([
+          cache.deletePattern('materials:'),
+          cache.deletePattern('inventory:'),
+          cache.deletePattern('stats:')
+        ]);
+      }
+      
       return json({ success: true });
     }
 
-    // 3. 库存 (Inventory) - 使用 AS 映射字段名
+    // 3. 库存 (Inventory) - 使用 AS 映射字段名和 KV 缓存
     if (path === '/inventory' && method === 'GET') {
       const date = url.searchParams.get('date');
       const timestamp = url.searchParams.get('timestamp') || Date.now().toString();
+      const cacheKey = `inventory:daily:${date}:${timestamp}`;
+      
+      // 尝试从 KV 缓存获取（30分钟TTL）
+      if (cache) {
+        const cached = await cache.get(cacheKey);
+        if (cached) return json(cached);
+      }
+      
       const { results } = await env.DB.prepare(`
         SELECT i.id, i.material_id AS materialId, i.date, 
         i.opening_stock AS openingStock, 
@@ -158,6 +258,12 @@ export const onRequest: any = async (context: any) => {
         INNER JOIN materials m ON i.material_id = m.id
         WHERE i.date = ? AND (m.deleted_at IS NULL OR m.deleted_at > ?)
       `).bind(date, parseInt(timestamp)).all();
+      
+      // 存入 KV 缓存（30分钟TTL）
+      if (cache) {
+        await cache.set(cacheKey, results, 1800);
+      }
+      
       return json(results);
     }
 
@@ -170,6 +276,14 @@ export const onRequest: any = async (context: any) => {
       
       if (!date) {
         return json({ error: 'date parameter is required' }, 400);
+      }
+      
+      const cacheKey = `inventory:page:${date}:${page}:${pageSize}:${search || ''}`;
+      
+      // 尝试从 KV 缓存获取（15分钟TTL）
+      if (cache) {
+        const cached = await cache.get(cacheKey);
+        if (cached) return json(cached);
       }
       
       const offset = (page - 1) * pageSize;
@@ -208,13 +322,20 @@ export const onRequest: any = async (context: any) => {
       
       const hasMore = (offset + results.length) < total;
       
-      return json({
+      const responseData = {
         inventory: results,
         total,
         hasMore,
         page,
         pageSize
-      });
+      };
+      
+      // 存入 KV 缓存（15分钟TTL）
+      if (cache) {
+        await cache.set(cacheKey, responseData, 900);
+      }
+      
+      return json(responseData);
     }
 
     if (path === '/inventory' && method === 'PUT') {
@@ -235,6 +356,17 @@ export const onRequest: any = async (context: any) => {
           .bind(currentOpening, nextRemaining, next.id).run();
         currentOpening = nextRemaining;
       }
+      
+      // 清除相关缓存
+      if (cache) {
+        await Promise.all([
+          cache.delete(`inventory:daily:${record.date}:${Date.now()}`),
+          cache.deletePattern('inventory:page:'),
+          cache.deletePattern('stats:'),
+          cache.deletePattern('materials:page:')
+        ]);
+      }
+      
       return json({ success: true });
     }
 
@@ -260,8 +392,23 @@ export const onRequest: any = async (context: any) => {
     }
 
     if (path === '/settings' && method === 'GET') {
+      const cacheKey = 'settings:all';
+      
+      // 尝试从 KV 缓存获取（2小时TTL）
+      if (cache) {
+        const cached = await cache.get(cacheKey);
+        if (cached) return json(cached);
+      }
+      
       const { results } = await env.DB.prepare("SELECT * FROM settings").all();
-      return json(results.reduce((acc: any, curr: any) => ({ ...acc, [curr.key]: curr.value }), {}));
+      const settingsData = results.reduce((acc: any, curr: any) => ({ ...acc, [curr.key]: curr.value }), {});
+      
+      // 存入 KV 缓存（2小时TTL）
+      if (cache) {
+        await cache.set(cacheKey, settingsData, 7200);
+      }
+      
+      return json(settingsData);
     }
 
     if (path === '/settings' && method === 'PUT') {
@@ -270,6 +417,12 @@ export const onRequest: any = async (context: any) => {
         await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)")
           .bind(key, String(value)).run();
       }
+      
+      // 清除设置缓存
+      if (cache) {
+        await cache.delete('settings:all');
+      }
+      
       return json({ success: true });
     }
 
@@ -277,6 +430,13 @@ export const onRequest: any = async (context: any) => {
       const start = url.searchParams.get('start');
       const end = url.searchParams.get('end');
       const endTimestamp = parseInt(url.searchParams.get('endTimestamp') || '0');
+      const cacheKey = `stats:${start}:${end}:${endTimestamp}`;
+      
+      // 尝试从 KV 缓存获取（30分钟TTL）
+      if (cache) {
+        const cached = await cache.get(cacheKey);
+        if (cached) return json(cached);
+      }
       
       const { results } = await env.DB.prepare(`
         SELECT m.name, m.unit, 
@@ -291,11 +451,31 @@ export const onRequest: any = async (context: any) => {
         AND (m.deleted_at IS NULL OR m.deleted_at > ?)
         GROUP BY m.id
       `).bind(end, start, end, endTimestamp, endTimestamp).all();
+      
+      // 存入 KV 缓存（30分钟TTL）
+      if (cache) {
+        await cache.set(cacheKey, results, 1800);
+      }
+      
       return json(results);
     }
 
     if (path === '/users' && method === 'GET') {
+      const cacheKey = 'users:all';
+      
+      // 尝试从 KV 缓存获取（1小时TTL）
+      if (cache) {
+        const cached = await cache.get(cacheKey);
+        if (cached) return json(cached);
+      }
+      
       const { results } = await env.DB.prepare("SELECT id, username, role FROM users").all();
+      
+      // 存入 KV 缓存（1小时TTL）
+      if (cache) {
+        await cache.set(cacheKey, results, 3600);
+      }
+      
       return json(results);
     }
 
@@ -304,6 +484,12 @@ export const onRequest: any = async (context: any) => {
       const id = crypto.randomUUID();
       await env.DB.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)")
         .bind(id, username, password, role || 'user').run();
+      
+      // 清除用户缓存
+      if (cache) {
+        await cache.delete('users:all');
+      }
+      
       return json({ id, username, role: role || 'user' });
     }
 
@@ -311,6 +497,12 @@ export const onRequest: any = async (context: any) => {
       const { userId, newPassword } = await request.json() as any;
       await env.DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?")
         .bind(newPassword, userId).run();
+      
+      // 清除用户缓存
+      if (cache) {
+        await cache.delete('users:all');
+      }
+      
       return json({ success: true });
     }
 
@@ -320,6 +512,12 @@ export const onRequest: any = async (context: any) => {
         return json({ error: 'User ID is required' }, 400);
       }
       await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(userId).run();
+      
+      // 清除用户缓存
+      if (cache) {
+        await cache.delete('users:all');
+      }
+      
       return json({ success: true });
     }
 
@@ -333,6 +531,30 @@ export const onRequest: any = async (context: any) => {
       await env.DB.prepare("INSERT INTO audit_logs (id, user_id, username, action, details, timestamp) VALUES (?, ?, ?, ?, ?, ?)")
         .bind(crypto.randomUUID(), log.userId, log.username, log.action, log.details, log.timestamp).run();
       return json({ success: true });
+    }
+
+    // 缓存清理API
+    if (path === '/cache/clear' && method === 'POST') {
+      try {
+        const body = await request.json() as any;
+        const patterns = body.patterns || [];
+        
+        if (cache) {
+          // 清除指定的缓存模式
+          for (const pattern of patterns) {
+            await cache.deletePattern(pattern);
+          }
+          
+          // 如果指定了日期，也清除相关的日期缓存
+          if (body.date) {
+            await cache.delete(`inventory:daily:${body.date}`);
+          }
+        }
+        
+        return json({ success: true, cleared: patterns });
+      } catch (error) {
+        return json({ error: 'Failed to clear cache' }, 500);
+      }
     }
 
     return json({ error: 'Not Found' }, 404);
