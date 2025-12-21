@@ -1,13 +1,13 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../services/db';
+import { config } from '../services/config';
 import { Material, DailyInventory } from '../types';
 import { Plus, Search, Upload, Trash2, X, CheckSquare, Square, Calculator } from 'lucide-react';
 
 declare const XLSX: any;
 
 const InventoryView: React.FC = () => {
-  const LOW_STOCK_THRESHOLD = Number(process.env.LOW_STOCK_THRESHOLD || 10);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [searchTerm, setSearchTerm] = useState('');
   const [materials, setMaterials] = useState<Material[]>([]);
@@ -288,7 +288,7 @@ const InventoryView: React.FC = () => {
             const mat = materials.find(m => m.id === item.materialId);
             if (!mat) return null;
             const isSelected = selectedIds.has(item.materialId);
-            const isLowStock = item.remainingStock < LOW_STOCK_THRESHOLD;
+            const isLowStock = item.remainingStock < config.LOW_STOCK_THRESHOLD;
             return (
               <div key={item.id} className={`bg-white rounded-3xl p-5 shadow-sm border-2 transition-all ${isSelected ? 'border-blue-500 bg-blue-50/5' : 'border-gray-50'}`}>
                 <div className="flex justify-between items-start mb-5">
