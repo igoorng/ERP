@@ -15,11 +15,23 @@ import {
 } from 'recharts';
 
 const Dashboard: React.FC = () => {
-  // 获取当前系统日期
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  // 核心：使用 db 工具函数获取准确北京日期
+  const [todayStr, setTodayStr] = useState(db.getBeijingDate());
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  // 组件加载时，确保今日数据已初始化（承接昨日余量并重置增量）
+  // 自动更新逻辑：每分钟检查一次北京日期是否发生变更
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const currentBeijingDate = db.getBeijingDate();
+      if (currentBeijingDate !== todayStr) {
+        setTodayStr(currentBeijingDate);
+      }
+    }, 60000); // 每 60 秒检查一次
+
+    return () => clearInterval(interval);
+  }, [todayStr]);
+
+  // 组件加载或日期变动时，确保今日数据已初始化
   useEffect(() => {
     db.initializeDate(todayStr);
     setRefreshTrigger(prev => prev + 1);
@@ -68,7 +80,7 @@ const Dashboard: React.FC = () => {
         </div>
         <div className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-2xl shadow-lg shadow-blue-200">
           <CalendarIcon size={18} />
-          <span className="font-bold text-sm">{todayStr} (今日)</span>
+          <span className="font-bold text-sm tracking-tight">{todayStr} (北京时间)</span>
         </div>
       </div>
 
@@ -114,7 +126,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div className="flex items-center space-x-1.5 bg-green-50 px-3 py-1 rounded-full">
               <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-[10px] font-black text-green-600">实时同步中</span>
+              <span className="text-[10px] font-black text-green-600">北京时间同步中</span>
             </div>
           </div>
           <div className="h-72 sm:h-80 w-full">
@@ -192,7 +204,6 @@ const Dashboard: React.FC = () => {
   );
 };
 
-// Internal component for statistic cards
 const StatCard = ({ label, value, subLabel, icon, color }: any) => {
   const iconBg: any = {
     blue: 'bg-blue-50 text-blue-600',
@@ -202,7 +213,6 @@ const StatCard = ({ label, value, subLabel, icon, color }: any) => {
   };
   return (
     <div className="bg-white p-4 lg:p-6 rounded-[2rem] shadow-sm border border-gray-100 flex items-center space-x-4">
-      {/* Fix: Ensure className is always a string to satisfy TypeScript requirements and avoid boolean type errors */}
       <div className={`w-12 h-12 lg:w-14 lg:h-14 rounded-2xl flex items-center justify-center flex-shrink-0 ${iconBg[color] || 'bg-gray-50 text-gray-600'}`}>
         {icon}
       </div>
@@ -217,5 +227,4 @@ const StatCard = ({ label, value, subLabel, icon, color }: any) => {
   );
 };
 
-// Fix: Add missing default export to resolve import error in App.tsx
 export default Dashboard;

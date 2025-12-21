@@ -106,7 +106,12 @@ const Layout: React.FC<LayoutProps> = ({ user, currentView, setView, onLogout, c
           </div>
           
           <div className="hidden sm:block text-xs font-bold text-gray-400 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100">
-            {new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' })}
+            {new Date().toLocaleDateString('zh-CN', { 
+              timeZone: 'Asia/Shanghai', 
+              month: 'long', 
+              day: 'numeric', 
+              weekday: 'short' 
+            })}
           </div>
         </header>
 

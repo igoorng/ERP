@@ -22,6 +22,21 @@ async function hashPassword(password: string): Promise<string> {
 }
 
 export const db = {
+  // --- Time Utilities (Beijing Time UTC+8) ---
+  getBeijingDate: (): string => {
+    // 使用 sv-SE 区域设置可以稳定获得 YYYY-MM-DD 格式
+    return new Intl.DateTimeFormat('sv-SE', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date());
+  },
+
+  getBeijingTimestamp: (): string => {
+    return new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+  },
+
   // --- Auth & Users ---
   getCurrentUser: (): User | null => {
     const data = localStorage.getItem(KEYS.SESSION);
@@ -39,7 +54,6 @@ export const db = {
     let users = usersStr ? JSON.parse(usersStr) : [];
     
     if (users.length === 0) {
-      // 仅在首次运行时，将配置中的初始密码哈希化并存储
       const hashedPass = await hashPassword(config.APP_PASSWORD);
       const defaultUser = {
         id: 'admin-id',
@@ -61,7 +75,6 @@ export const db = {
     
     const user = users.find((u: any) => u.username === username && u.passwordHash === hashedInput);
     if (user) {
-      // 返回不带密码哈希的用户对象
       const { passwordHash, ...safeUser } = user;
       return safeUser as User;
     }
@@ -80,7 +93,7 @@ export const db = {
       id: Math.random().toString(36).slice(2, 11),
       name,
       unit,
-      createdAt: new Date().toISOString()
+      createdAt: db.getBeijingTimestamp()
     };
     materials.push(newMaterial);
     localStorage.setItem(KEYS.MATERIALS, JSON.stringify(materials));
@@ -239,7 +252,7 @@ export const db = {
       username: user?.username || 'System',
       action,
       details,
-      timestamp: new Date().toISOString()
+      timestamp: db.getBeijingTimestamp()
     };
     logs.unshift(newLog);
     localStorage.setItem(KEYS.LOGS, JSON.stringify(logs.slice(0, 1000)));

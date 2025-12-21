@@ -17,7 +17,8 @@ const AVAILABLE_COLUMNS = [
 ];
 
 const ReportsView: React.FC = () => {
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  // 核心修改：使用 db.getBeijingDate()
+  const [date, setDate] = useState(db.getBeijingDate());
   const [selectedCols, setSelectedCols] = useState<string[]>(AVAILABLE_COLUMNS.map(c => c.id));
 
   const toggleColumn = (id: string) => {
@@ -143,26 +144,9 @@ const ReportsView: React.FC = () => {
             文件名格式为: <code className="bg-white px-1 rounded border">Inventory_Report_{date}.xlsx</code>
           </p>
         </div>
-        <div className="bg-gray-50/50 p-5 rounded-xl border border-dashed border-gray-200">
-          <h4 className="font-bold text-gray-800 mb-2 flex items-center">
-            <History size={16} className="mr-2 text-blue-500" />
-            使用建议
-          </h4>
-          <p className="text-xs text-gray-500 leading-relaxed">
-            通常建议保留“物料名称”、“单位”以及“剩余库存”作为必选字段，以便后续复盘使用。
-          </p>
-        </div>
       </div>
     </div>
   );
 };
-
-const History = ({ size, className }: any) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-    <path d="M3 3v5h5" />
-    <path d="M12 7v5l4 2" />
-  </svg>
-);
 
 export default ReportsView;

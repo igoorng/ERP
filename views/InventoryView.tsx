@@ -8,7 +8,8 @@ import { Plus, Search, Upload, Trash2, X, CheckSquare, Square, Calculator } from
 declare const XLSX: any;
 
 const InventoryView: React.FC = () => {
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  // 核心修改：使用 db.getBeijingDate()
+  const [date, setDate] = useState(db.getBeijingDate());
   const [searchTerm, setSearchTerm] = useState('');
   const [materials, setMaterials] = useState<Material[]>([]);
   const [inventory, setInventory] = useState<DailyInventory[]>([]);

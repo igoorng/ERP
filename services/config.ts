@@ -4,5 +4,5 @@ export const config = {
   // 系统默认账号
   APP_USERNAME: import.meta.env.VITE_APP_USERNAME || 'admin',
   // 系统默认密码
-  APP_PASSWORD: import.meta.env.VITE_APP_PASSWORD || 'admin@123',
+  APP_PASSWORD: import.meta.env.VITE_APP_PASSWORD || 'admin',
 };
