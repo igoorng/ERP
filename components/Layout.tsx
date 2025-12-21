@@ -90,7 +90,7 @@ const Layout: React.FC<LayoutProps> = ({ user, currentView, setView, onLogout, c
             className="flex items-center w-full px-4 py-3 text-sm font-medium text-red-400 hover:bg-red-900/20 rounded-xl transition-colors"
           >
             <LogOut size={20} className="mr-3" />
-            退出系统 Logout
+            退出系统
           </button>
         </div>
       </aside>

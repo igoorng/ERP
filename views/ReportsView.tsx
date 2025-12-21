@@ -80,7 +80,7 @@ const ReportsView: React.FC = () => {
       const worksheet = XLSX.utils.json_to_sheet(exportData);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, `Inventory_${date}`);
-      XLSX.writeFile(workbook, `MaterialFlow_Inventory_${date}.xlsx`);
+      XLSX.writeFile(workbook, `数据统计_${date}.xlsx`);
       
       db.logAction('EXPORT', `导出报表: 日期 ${date}, 字段数 ${selectedCols.length}`);
     } catch (e) {
@@ -173,12 +173,12 @@ const ReportsView: React.FC = () => {
              <Download className="text-blue-400" size={20} />
            </div>
            <div>
-             <p className="text-xs font-black uppercase tracking-widest text-slate-500">导出预览预览</p>
-             <p className="text-sm font-bold">MaterialFlow_Inventory_{date}.xlsx</p>
+             <p className="text-xs font-black uppercase tracking-widest text-slate-500">导出预览</p>
+             <p className="text-sm font-bold">数据统计_{date}.xlsx</p>
            </div>
         </div>
         <div className="text-right">
-           <p className="text-xs font-black text-slate-500 mb-1">选中字段数</p>
+           <p className="text-xs font-black text-slate-500 mb-1">选中字段数量</p>
            <span className="px-3 py-1 bg-blue-600 rounded-lg font-black text-xs">{selectedCols.length} Columns</span>
         </div>
       </div>
