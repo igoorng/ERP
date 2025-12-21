@@ -16,7 +16,7 @@ const InventoryView: React.FC = () => {
   
   // 分页状态
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(50); // 每页显示50条
+  const [pageSize] = useState(20); // 每页显示20条
   const [totalItems, setTotalItems] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   
@@ -394,7 +394,7 @@ const InventoryView: React.FC = () => {
                   上一页
                 </button>
                 <div className="flex items-center space-x-1">
-                  {Array.from({ length: Math.min(5, Math.ceil(totalItems / pageSize)) }, (_, i) => {
+                  {Array.from({ length: Math.min(7, Math.ceil(totalItems / pageSize)) }, (_, i) => {
                     const pageNum = i + 1;
                     const isActive = pageNum === currentPage;
                     return (
@@ -411,7 +411,7 @@ const InventoryView: React.FC = () => {
                       </button>
                     );
                   })}
-                  {Math.ceil(totalItems / pageSize) > 5 && (
+                  {Math.ceil(totalItems / pageSize) > 7 && (
                     <>
                       <span className="text-gray-400">...</span>
                       <button
@@ -541,7 +541,7 @@ const InventoryView: React.FC = () => {
                   上一页
                 </button>
                 <div className="flex items-center space-x-1">
-                  {Array.from({ length: Math.min(3, Math.ceil(totalItems / pageSize)) }, (_, i) => {
+                  {Array.from({ length: Math.min(5, Math.ceil(totalItems / pageSize)) }, (_, i) => {
                     const pageNum = i + 1;
                     const isActive = pageNum === currentPage;
                     return (
@@ -558,7 +558,7 @@ const InventoryView: React.FC = () => {
                       </button>
                     );
                   })}
-                  {Math.ceil(totalItems / pageSize) > 3 && (
+                  {Math.ceil(totalItems / pageSize) > 5 && (
                     <>
                       <span className="text-gray-400 self-center">...</span>
                       <button

@@ -79,8 +79,8 @@ export const preloadCommonData = async (): Promise<void> => {
     
     // 预加载前几页的分页数据
     await Promise.all([
-      db.getMaterialsPaginated(1, 50, today, '', false),
-      db.getInventoryForDatePaginated(today, 1, 50, '', false)
+      db.getMaterialsPaginated(1, 20, today, '', false),
+      db.getInventoryForDatePaginated(today, 1, 20, '', false)
     ]);
     
     console.log('缓存预热完成');
@@ -259,7 +259,7 @@ export const db = {
   },
 
   // 分页获取物料
-  getMaterialsPaginated: async (page: number = 1, pageSize: number = 50, date?: string, searchTerm?: string, forceRefresh: boolean = false): Promise<{materials: Material[], total: number, hasMore: boolean}> => {
+  getMaterialsPaginated: async (page: number = 1, pageSize: number = 20, date?: string, searchTerm?: string, forceRefresh: boolean = false): Promise<{materials: Material[], total: number, hasMore: boolean}> => {
     const cacheKey = `materials_paginated_${page}_${pageSize}_${date || 'current'}_${searchTerm || ''}`;
     
     // 尝试从缓存获取数据
@@ -358,7 +358,7 @@ export const db = {
   },
 
   // 分页获取库存数据
-  getInventoryForDatePaginated: async (date: string, page: number = 1, pageSize: number = 50, searchTerm?: string, forceRefresh: boolean = false): Promise<{inventory: DailyInventory[], total: number, hasMore: boolean}> => {
+  getInventoryForDatePaginated: async (date: string, page: number = 1, pageSize: number = 20, searchTerm?: string, forceRefresh: boolean = false): Promise<{inventory: DailyInventory[], total: number, hasMore: boolean}> => {
     const cacheKey = `inventory_paginated_${date}_${page}_${pageSize}_${searchTerm || ''}`;
     
     // 尝试从缓存获取数据
