@@ -61,10 +61,10 @@ export const onRequest: any = async (context: any) => {
       return user ? json(user) : json({ error: 'Unauthorized' }, 401);
     }
 
-    // 2. 物料 (Materials)
+    // 2. 物料 (Materials) - 使用 AS 映射
     if (path === '/materials' && method === 'GET') {
       const timestamp = url.searchParams.get('timestamp');
-      let query = "SELECT * FROM materials";
+      let query = "SELECT id, name, unit, created_at AS createdAt, deleted_at AS deletedAt FROM materials";
       let params: any[] = [];
 
       if (timestamp) {
@@ -81,10 +81,8 @@ export const onRequest: any = async (context: any) => {
     if (path === '/materials' && method === 'POST') {
       const { name, unit, initialStock, date, timestamp } = await request.json() as any;
       const id = crypto.randomUUID();
-      // 1. 插入物料
       await env.DB.prepare("INSERT INTO materials (id, name, unit, created_at) VALUES (?, ?, ?, ?)")
         .bind(id, name, unit, timestamp).run();
-      // 2. 插入首日库存记录
       await env.DB.prepare("INSERT INTO inventory (id, material_id, date, opening_stock, today_inbound, workshop_outbound, store_outbound, remaining_stock) VALUES (?, ?, ?, ?, 0, 0, 0, ?)")
         .bind(crypto.randomUUID(), id, date, initialStock, initialStock).run();
       
@@ -99,10 +97,18 @@ export const onRequest: any = async (context: any) => {
       return json({ success: true });
     }
 
-    // 3. 库存 (Inventory)
+    // 3. 库存 (Inventory) - 使用 AS 映射字段名
     if (path === '/inventory' && method === 'GET') {
       const date = url.searchParams.get('date');
-      const { results } = await env.DB.prepare("SELECT * FROM inventory WHERE date = ?").bind(date).all();
+      const { results } = await env.DB.prepare(`
+        SELECT id, material_id AS materialId, date, 
+        opening_stock AS openingStock, 
+        today_inbound AS todayInbound, 
+        workshop_outbound AS workshopOutbound, 
+        store_outbound AS storeOutbound, 
+        remaining_stock AS remainingStock 
+        FROM inventory WHERE date = ?
+      `).bind(date).all();
       return json(results);
     }
 
@@ -114,7 +120,7 @@ export const onRequest: any = async (context: any) => {
         WHERE material_id = ? AND date = ?
       `).bind(record.todayInbound, record.workshopOutbound, record.storeOutbound, record.remainingStock, record.materialId, record.date).run();
 
-      const nextRecords = await env.DB.prepare("SELECT * FROM inventory WHERE material_id = ? AND date > ? ORDER BY date ASC")
+      const nextRecords = await env.DB.prepare("SELECT id, today_inbound, workshop_outbound, store_outbound FROM inventory WHERE material_id = ? AND date > ? ORDER BY date ASC")
         .bind(record.materialId, record.date).all();
       
       let currentOpening = record.remainingStock;
@@ -189,7 +195,7 @@ export const onRequest: any = async (context: any) => {
     }
 
     if (path === '/logs' && method === 'GET') {
-      const { results } = await env.DB.prepare("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 100").all();
+      const { results } = await env.DB.prepare("SELECT id, user_id AS userId, username, action, details, timestamp FROM audit_logs ORDER BY timestamp DESC LIMIT 100").all();
       return json(results);
     }
 
