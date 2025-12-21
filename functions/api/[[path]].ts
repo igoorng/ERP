@@ -24,7 +24,7 @@ export const onRequest: any = async (context: any) => {
     if (path === '/auth/init' && method === 'POST') {
       const sqls = [
         `CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE, password_hash TEXT, role TEXT)`,
-        `CREATE TABLE IF NOT EXISTS materials (id TEXT PRIMARY KEY, name TEXT, unit TEXT, created_at TEXT, deleted_at TEXT)`,
+        `CREATE TABLE IF NOT EXISTS materials (id TEXT PRIMARY KEY, name TEXT, unit TEXT, created_at INTEGER, deleted_at INTEGER)`,
         `CREATE TABLE IF NOT EXISTS inventory (
           id TEXT PRIMARY KEY, 
           material_id TEXT, 
@@ -63,14 +63,16 @@ export const onRequest: any = async (context: any) => {
 
     // 2. 物料 (Materials)
     if (path === '/materials' && method === 'GET') {
-      const date = url.searchParams.get('date');
-      let query = "SELECT * FROM materials WHERE (deleted_at IS NULL OR deleted_at > ?)";
-      let params = [date || '9999-12-31'];
+      const timestamp = url.searchParams.get('timestamp');
+      let query = "SELECT * FROM materials";
+      let params: any[] = [];
 
-      // 如果提供了日期，我们只显示在该日期之前已创建且未在该日期前被删除的物料
-      if (date) {
-        query += " AND created_at <= ?";
-        params.push(date);
+      if (timestamp) {
+        // 只有在指定时间戳之前创建，且未被删除（或在该时间戳之后才删除）的物料才可见
+        query += " WHERE created_at <= ? AND (deleted_at IS NULL OR deleted_at > ?)";
+        params = [parseInt(timestamp), parseInt(timestamp)];
+      } else {
+        query += " WHERE deleted_at IS NULL";
       }
 
       const { results } = await env.DB.prepare(query).bind(...params).all();
@@ -78,19 +80,21 @@ export const onRequest: any = async (context: any) => {
     }
 
     if (path === '/materials' && method === 'POST') {
-      const { name, unit, initialStock, date } = await request.json() as any;
+      const { name, unit, initialStock, date, timestamp } = await request.json() as any;
       const id = crypto.randomUUID();
+      // 插入物料主表，使用时间戳
       await env.DB.prepare("INSERT INTO materials (id, name, unit, created_at) VALUES (?, ?, ?, ?)")
-        .bind(id, name, unit, date).run();
+        .bind(id, name, unit, timestamp).run();
+      // 插入初始化库存记录，关联到当天的 YYYY-MM-DD
       await env.DB.prepare("INSERT INTO inventory (id, material_id, date, opening_stock, today_inbound, workshop_outbound, store_outbound, remaining_stock) VALUES (?, ?, ?, ?, 0, 0, 0, ?)")
         .bind(crypto.randomUUID(), id, date, initialStock, initialStock).run();
       return json({ id, name, unit });
     }
 
     if (path === '/materials/batch-delete' && method === 'POST') {
-      const { ids, date } = await request.json() as any;
+      const { ids, timestamp } = await request.json() as any;
       for (const id of ids) {
-        await env.DB.prepare("UPDATE materials SET deleted_at = ? WHERE id = ?").bind(date, id).run();
+        await env.DB.prepare("UPDATE materials SET deleted_at = ? WHERE id = ?").bind(timestamp, id).run();
       }
       return json({ success: true });
     }
@@ -124,12 +128,13 @@ export const onRequest: any = async (context: any) => {
     }
 
     if (path === '/inventory/initialize' && method === 'POST') {
-      const { date } = await request.json() as any;
+      const { date, timestamp } = await request.json() as any;
+      // 基于时间戳查询所有应该在此时生效的物料
       const mats = await env.DB.prepare(`
         SELECT id FROM materials 
         WHERE created_at <= ? 
         AND (deleted_at IS NULL OR deleted_at > ?)
-      `).bind(date, date).all();
+      `).bind(timestamp, timestamp).all();
       
       for (const m of (mats.results as any[])) {
         const exists = await env.DB.prepare("SELECT id FROM inventory WHERE material_id = ? AND date = ?").bind(m.id, date).first();
@@ -161,6 +166,8 @@ export const onRequest: any = async (context: any) => {
     if (path === '/stats' && method === 'GET') {
       const start = url.searchParams.get('start');
       const end = url.searchParams.get('end');
+      const endTimestamp = parseInt(url.searchParams.get('endTimestamp') || '0');
+      
       const { results } = await env.DB.prepare(`
         SELECT m.name, m.unit, 
         SUM(i.today_inbound) as totalIn, 
@@ -170,8 +177,10 @@ export const onRequest: any = async (context: any) => {
         FROM materials m
         JOIN inventory i ON m.id = i.material_id
         WHERE i.date >= ? AND i.date <= ?
+        AND m.created_at <= ?
+        AND (m.deleted_at IS NULL OR m.deleted_at > ?)
         GROUP BY m.id
-      `).bind(end, start, end).all();
+      `).bind(end, start, end, endTimestamp, endTimestamp).all();
       return json(results);
     }
 

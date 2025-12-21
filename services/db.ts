@@ -9,7 +9,7 @@ const DEFAULT_SETTINGS = {
 };
 
 export const db = {
-  // --- Time Utilities (强制亚洲/上海时区) ---
+  // --- Time Utilities ---
   getBeijingDate: (): string => {
     const formatter = new Intl.DateTimeFormat('zh-CN', {
       timeZone: 'Asia/Shanghai',
@@ -22,6 +22,12 @@ export const db = {
     const m = parts.find(p => p.type === 'month')?.value;
     const d = parts.find(p => p.type === 'day')?.value;
     return `${y}-${m}-${d}`;
+  },
+
+  // 获取该日期北京时间 23:59:59.999 的 Unix 时间戳
+  getBeijingDayEndTimestamp: (dateStr: string): number => {
+    // 强制指定 +08:00 时区偏移
+    return new Date(`${dateStr}T23:59:59.999+08:00`).getTime();
   },
 
   getBeijingTimestamp: (): string => {
@@ -43,7 +49,6 @@ export const db = {
       const response = await fetch(`${API_BASE}/settings`);
       if (!response.ok) throw new Error('Failed to fetch settings');
       const data = await response.json();
-      // 合并默认值，确保所有必需的 Key 都存在
       return { ...DEFAULT_SETTINGS, ...data };
     } catch (e) {
       return { ...DEFAULT_SETTINGS };
@@ -126,7 +131,11 @@ export const db = {
 
   // --- Materials ---
   getMaterials: async (date?: string): Promise<Material[]> => {
-    const url = date ? `${API_BASE}/materials?date=${date}` : `${API_BASE}/materials`;
+    let url = `${API_BASE}/materials`;
+    if (date) {
+      const ts = db.getBeijingDayEndTimestamp(date);
+      url += `?timestamp=${ts}`;
+    }
     const response = await fetch(url);
     return response.json();
   },
@@ -135,7 +144,13 @@ export const db = {
     const response = await fetch(`${API_BASE}/materials`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, unit, initialStock, date })
+      body: JSON.stringify({ 
+        name, 
+        unit, 
+        initialStock, 
+        date, // 用于库存记录的 YYYY-MM-DD
+        timestamp: Date.now() // 精确的创建毫秒时间戳
+      })
     });
     const result = await response.json();
     await db.logAction('CREATE', `新增物料: ${name} (期初: ${initialStock})`);
@@ -143,10 +158,11 @@ export const db = {
   },
 
   deleteMaterials: async (ids: string[], date: string): Promise<void> => {
+    const ts = Date.now();
     await fetch(`${API_BASE}/materials/batch-delete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids, date })
+      body: JSON.stringify({ ids, timestamp: ts })
     });
     await db.logAction('DELETE', `删除物料: ${ids.length}项`);
   },
@@ -170,15 +186,17 @@ export const db = {
   },
 
   initializeDate: async (date: string): Promise<void> => {
+    const ts = db.getBeijingDayEndTimestamp(date);
     await fetch(`${API_BASE}/inventory/initialize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date })
+      body: JSON.stringify({ date, timestamp: ts })
     });
   },
 
   getAggregatedStatistics: async (startDate: string, endDate: string): Promise<any[]> => {
-    const response = await fetch(`${API_BASE}/stats?start=${startDate}&end=${endDate}`);
+    const endTs = db.getBeijingDayEndTimestamp(endDate);
+    const response = await fetch(`${API_BASE}/stats?start=${startDate}&end=${endDate}&endTimestamp=${endTs}`);
     return response.json();
   },
 

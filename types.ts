@@ -9,19 +9,19 @@ export interface Material {
   id: string;
   name: string;
   unit: string;
-  createdAt: string; // YYYY-MM-DD
-  deletedAt?: string; // YYYY-MM-DD (逻辑删除日期)
+  createdAt: number; // Unix Timestamp (ms)
+  deletedAt?: number; // Unix Timestamp (ms)
 }
 
 export interface DailyInventory {
   id: string;
   materialId: string;
-  date: string; // YYYY-MM-DD
-  openingStock: number; // 实时库存 (at start of day)
-  todayInbound: number; // 今日入库
-  workshopOutbound: number; // 车间出库
-  storeOutbound: number; // 店面出库
-  remainingStock: number; // 今日剩余库存
+  date: string; // YYYY-MM-DD (库存依然按天聚合)
+  openingStock: number; 
+  todayInbound: number; 
+  workshopOutbound: number; 
+  storeOutbound: number; 
+  remainingStock: number; 
 }
 
 export interface AuditLog {
