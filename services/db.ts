@@ -1,5 +1,6 @@
 
 import { Material, DailyInventory, AuditLog, User } from '../types';
+import { config } from './config';
 
 // Storage keys
 const DB_PREFIX = 'mf_pro_';
@@ -11,6 +12,15 @@ const KEYS = {
   SESSION: DB_PREFIX + 'session'
 };
 
+// 使用 Web Crypto API 实现 SHA-256 哈希
+async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 export const db = {
   // --- Auth & Users ---
   getCurrentUser: (): User | null => {
@@ -21,6 +31,41 @@ export const db = {
   setCurrentUser: (user: User | null) => {
     if (user) localStorage.setItem(KEYS.SESSION, JSON.stringify(user));
     else localStorage.removeItem(KEYS.SESSION);
+  },
+
+  // 系统初始化：确保数据库中存在哈希后的默认管理员
+  initAuth: async () => {
+    const usersStr = localStorage.getItem(KEYS.USERS);
+    let users = usersStr ? JSON.parse(usersStr) : [];
+    
+    if (users.length === 0) {
+      // 仅在首次运行时，将配置中的初始密码哈希化并存储
+      const hashedPass = await hashPassword(config.APP_PASSWORD);
+      const defaultUser = {
+        id: 'admin-id',
+        username: config.APP_USERNAME,
+        passwordHash: hashedPass,
+        role: 'admin'
+      };
+      users.push(defaultUser);
+      localStorage.setItem(KEYS.USERS, JSON.stringify(users));
+      db.logAction('SYSTEM', '系统初始化：已安全创建加密管理员账户');
+    }
+  },
+
+  // 安全身份验证：比对哈希值
+  authenticate: async (username: string, password: string): Promise<User | null> => {
+    const usersStr = localStorage.getItem(KEYS.USERS);
+    const users = usersStr ? JSON.parse(usersStr) : [];
+    const hashedInput = await hashPassword(password);
+    
+    const user = users.find((u: any) => u.username === username && u.passwordHash === hashedInput);
+    if (user) {
+      // 返回不带密码哈希的用户对象
+      const { passwordHash, ...safeUser } = user;
+      return safeUser as User;
+    }
+    return null;
   },
 
   // --- Materials ---
@@ -40,7 +85,6 @@ export const db = {
     materials.push(newMaterial);
     localStorage.setItem(KEYS.MATERIALS, JSON.stringify(materials));
     
-    // 初始化指定日期的库存记录
     const inventoryData = localStorage.getItem(KEYS.INVENTORY);
     let allLogs: DailyInventory[] = inventoryData ? JSON.parse(inventoryData) : [];
     
@@ -58,7 +102,6 @@ export const db = {
     localStorage.setItem(KEYS.INVENTORY, JSON.stringify(allLogs));
 
     db.logAction('CREATE', `新增物料: ${name} (${unit}), 昨日库存: ${initialStock}`);
-    // 触发后续日期的级联更新（以防万一是在过去日期新增）
     db.cascadeUpdate(newMaterial.id, date, initialStock);
     return newMaterial;
   },
@@ -72,11 +115,9 @@ export const db = {
     const materials = db.getMaterials();
     const materialsToDelete = materials.filter(m => ids.includes(m.id));
     
-    // 1. 删除物料定义
     const updatedMaterials = materials.filter(m => !ids.includes(m.id));
     localStorage.setItem(KEYS.MATERIALS, JSON.stringify(updatedMaterials));
 
-    // 2. 清理关联的库存记录
     const inventoryData = localStorage.getItem(KEYS.INVENTORY);
     if (inventoryData) {
       const allInventory: DailyInventory[] = JSON.parse(inventoryData);
@@ -88,7 +129,6 @@ export const db = {
     db.logAction('DELETE', `批量删除物料: ${names}`);
   },
 
-  // --- Inventory & Calculations ---
   getInventoryForDate: (date: string): DailyInventory[] => {
     const data = localStorage.getItem(KEYS.INVENTORY);
     const allLogs: DailyInventory[] = data ? JSON.parse(data) : [];
@@ -99,7 +139,6 @@ export const db = {
     const data = localStorage.getItem(KEYS.INVENTORY);
     let allLogs: DailyInventory[] = data ? JSON.parse(data) : [];
     
-    // 实时计算剩余库存
     record.remainingStock = record.openingStock + record.todayInbound - record.workshopOutbound - record.storeOutbound;
 
     const index = allLogs.findIndex(l => l.materialId === record.materialId && l.date === record.date);
@@ -109,18 +148,14 @@ export const db = {
       allLogs.push(record);
     }
     localStorage.setItem(KEYS.INVENTORY, JSON.stringify(allLogs));
-
-    // 级联更新未来日期的期初库存
     db.cascadeUpdate(record.materialId, record.date, record.remainingStock);
   },
 
-  // 级联更新函数：当某日剩余库存改变，更新后续日期的期初库存
   cascadeUpdate: (materialId: string, fromDate: string, newOpeningForNext: number) => {
     const data = localStorage.getItem(KEYS.INVENTORY);
     if (!data) return;
     let allLogs: DailyInventory[] = JSON.parse(data);
 
-    // 获取该物料所有日期记录并排序
     const sortedRecords = allLogs
       .filter(l => l.materialId === materialId)
       .sort((a, b) => a.date.localeCompare(b.date));
@@ -190,7 +225,6 @@ export const db = {
     }
   },
 
-  // --- Audit Logs ---
   getLogs: (): AuditLog[] => {
     const data = localStorage.getItem(KEYS.LOGS);
     return data ? JSON.parse(data) : [];
