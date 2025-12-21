@@ -144,7 +144,7 @@ const InventoryView: React.FC = () => {
         for (const row of (data as any[])) {
           const name = row['物料名称'] || row['名称'];
           const unit = row['物料单位'] || row['单位'];
-          const stock = Number(row['昨日库存'] || row['期初库存'] || 0);
+          const stock = Number(row['昨日库存'] || row['昨日库存'] || 0);
           if (name && unit) await db.addMaterial(String(name), String(unit), stock, date);
         }
         await loadData();
@@ -185,7 +185,7 @@ const InventoryView: React.FC = () => {
             />
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 ml-5">
             {/* 批量删除按钮 - 仅在有选中项且为今天时显示 */}
             {isToday && selectedIds.length > 0 && (
               <button
@@ -342,7 +342,7 @@ const InventoryView: React.FC = () => {
                         <h4 className="font-black text-gray-900 leading-tight">{mat?.name}</h4>
                         <div className="flex items-center space-x-2 mt-1">
                           <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">单位: {mat?.unit}</span>
-                          <span className="text-[10px] font-black text-gray-400">期初: {item.openingStock}</span>
+                          <span className="text-[10px] font-black text-gray-400">昨日库存: {item.openingStock}</span>
                         </div>
                       </div>
                     </div>
@@ -355,7 +355,7 @@ const InventoryView: React.FC = () => {
 
                   <div className="grid grid-cols-3 gap-2">
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black text-blue-400 uppercase block ml-1 text-center">入库</label>
+                      <label className="text-[10px] font-black text-blue-400 uppercase block ml-1 text-center">今日入库</label>
                       <input
                         type="number"
                         disabled={!isToday}
@@ -366,7 +366,7 @@ const InventoryView: React.FC = () => {
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black text-orange-400 uppercase block ml-1 text-center">车间</label>
+                      <label className="text-[10px] font-black text-orange-400 uppercase block ml-1 text-center">车间出库</label>
                       <input
                         type="number"
                         disabled={!isToday}
@@ -377,7 +377,7 @@ const InventoryView: React.FC = () => {
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black text-purple-400 uppercase block ml-1 text-center">店面</label>
+                      <label className="text-[10px] font-black text-purple-400 uppercase block ml-1 text-center">店面出库</label>
                       <input
                         type="number"
                         disabled={!isToday}
@@ -391,7 +391,7 @@ const InventoryView: React.FC = () => {
 
                   <div className="pt-3 border-t border-dashed border-gray-100 flex items-center justify-between">
                     <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">实时计算剩余库存:</span>
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-2 ml-5">
                       <ArrowRight size={14} className="text-gray-300" />
                       <span className="text-2xl font-black text-blue-900 tracking-tighter">{item.remainingStock}</span>
                     </div>
