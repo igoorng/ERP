@@ -33,14 +33,11 @@ export const onRequest: any = async (context: any) => {
     }
 
     if (path === '/auth/init' && method === 'POST') {
-      // 初始化默认管理员
       const userExists = await env.DB.prepare("SELECT id FROM users LIMIT 1").first();
       if (!userExists) {
         await env.DB.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)")
           .bind('admin-id', 'admin', 'admin', 'admin').run();
       }
-      
-      // 初始化默认设置
       const settingsTableExists = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'").first();
       if (settingsTableExists) {
         const settingsCount = await env.DB.prepare("SELECT COUNT(*) as count FROM settings").first();
@@ -49,11 +46,46 @@ export const onRequest: any = async (context: any) => {
             .bind('LOW_STOCK_THRESHOLD', '10', 'SYSTEM_NAME', 'MaterialFlow Pro').run();
         }
       }
-      
       return json({ message: 'Success' });
     }
 
-    // 2. 系统设置 (Settings)
+    // 2. 用户管理 (Users Management)
+    if (path === '/users' && method === 'GET') {
+      const { results } = await env.DB.prepare("SELECT id, username, role FROM users").all();
+      return json(results);
+    }
+
+    if (path === '/users' && method === 'POST') {
+      const { username, password, role } = await request.json() as any;
+      const exists = await env.DB.prepare("SELECT id FROM users WHERE username = ?").bind(username).first();
+      if (exists) return json({ error: 'Username already exists' }, 400);
+      
+      const id = crypto.randomUUID();
+      await env.DB.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)")
+        .bind(id, username, password, role || 'user').run();
+      return json({ id, username, role });
+    }
+
+    if (path === '/users/password' && method === 'PUT') {
+      const { userId, newPassword } = await request.json() as any;
+      await env.DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?")
+        .bind(newPassword, userId).run();
+      return json({ success: true });
+    }
+
+    if (path === '/users' && method === 'DELETE') {
+      const id = url.searchParams.get('id');
+      // 防止删除最后一个管理员
+      const adminCount = await env.DB.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'admin'").first();
+      const target = await env.DB.prepare("SELECT role FROM users WHERE id = ?").bind(id).first();
+      if (target?.role === 'admin' && adminCount.count <= 1) {
+        return json({ error: 'Cannot delete the last admin' }, 400);
+      }
+      await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(id).run();
+      return json({ success: true });
+    }
+
+    // 3. 系统设置 (Settings)
     if (path === '/settings' && method === 'GET') {
       const { results } = await env.DB.prepare("SELECT * FROM settings").all();
       const settingsMap = results.reduce((acc: any, curr: any) => {
@@ -72,7 +104,7 @@ export const onRequest: any = async (context: any) => {
       return json({ success: true });
     }
 
-    // 3. 物料管理 (Materials)
+    // 4. 物料管理 (Materials)
     if (path === '/materials' && method === 'GET') {
       const date = url.searchParams.get('date');
       let query = "SELECT * FROM materials";
@@ -103,7 +135,7 @@ export const onRequest: any = async (context: any) => {
       return json({ success: true });
     }
 
-    // 4. 库存管理 (Inventory)
+    // 5. 库存管理 (Inventory)
     if (path === '/inventory' && method === 'GET') {
       const date = url.searchParams.get('date');
       const { results } = await env.DB.prepare("SELECT * FROM inventory WHERE date = ?").bind(date).all();
@@ -147,7 +179,7 @@ export const onRequest: any = async (context: any) => {
       return json({ success: true });
     }
 
-    // 5. 统计与日志
+    // 6. 统计与日志
     if (path === '/stats' && method === 'GET') {
       const start = url.searchParams.get('start');
       const end = url.searchParams.get('end');

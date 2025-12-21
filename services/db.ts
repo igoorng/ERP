@@ -32,7 +32,6 @@ export const db = {
       if (!response.ok) throw new Error('Failed to fetch settings');
       return response.json();
     } catch (e) {
-      // 容错：返回默认值
       return { LOW_STOCK_THRESHOLD: '10', SYSTEM_NAME: 'MaterialFlow Pro' };
     }
   },
@@ -46,7 +45,7 @@ export const db = {
     await db.logAction('UPDATE', '更新了系统全局配置');
   },
 
-  // --- Auth ---
+  // --- Auth & Users ---
   getCurrentUser: (): User | null => {
     const data = localStorage.getItem('mf_pro_session');
     return data ? JSON.parse(data) : null;
@@ -69,6 +68,45 @@ export const db = {
 
   initAuth: async () => {
     return fetch(`${API_BASE}/auth/init`, { method: 'POST' });
+  },
+
+  getUsers: async (): Promise<User[]> => {
+    const response = await fetch(`${API_BASE}/users`);
+    return response.json();
+  },
+
+  addUser: async (user: Partial<User> & { password?: string }): Promise<User> => {
+    const response = await fetch(`${API_BASE}/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(user)
+    });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to add user');
+    }
+    const result = await response.json();
+    await db.logAction('CREATE', `新增用户: ${user.username}`);
+    return result;
+  },
+
+  updateUserPassword: async (userId: string, newPassword: string): Promise<void> => {
+    const response = await fetch(`${API_BASE}/users/password`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, newPassword })
+    });
+    if (!response.ok) throw new Error('Failed to update password');
+    await db.logAction('UPDATE', `修改了用户 ID ${userId} 的密码`);
+  },
+
+  deleteUser: async (userId: string): Promise<void> => {
+    const response = await fetch(`${API_BASE}/users?id=${userId}`, { method: 'DELETE' });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to delete user');
+    }
+    await db.logAction('DELETE', `删除了用户 ID ${userId}`);
   },
 
   // --- Materials ---
