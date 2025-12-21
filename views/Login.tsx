@@ -54,7 +54,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
               <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl">
                 <Lock className="text-white" size={32} />
               </div>
-              <h1 className="text-3xl font-black tracking-tight">安全管理终端</h1>
+              <h1 className="text-3xl font-black tracking-tight">物料管理系统</h1>
               <p className="mt-2 text-blue-100 text-sm font-medium">MaterialFlow Pro v1.2 Secure</p>
             </div>
           </div>
@@ -68,7 +68,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             )}
 
             <div className="space-y-2">
-              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">管理账号 Username</label>
+              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">管理账号</label>
               <div className="relative group">
                 <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" size={20} />
                 <input
@@ -84,7 +84,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             </div>
 
             <div className="space-y-2">
-              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">授权密码 Password</label>
+              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">授权密码</label>
               <div className="relative group">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" size={20} />
                 <input
@@ -119,7 +119,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
           <div className="px-10 pb-8 text-center">
             <p className="text-xs text-gray-400 font-medium">
-              系统已启用 SHA-256 哈希验证，确保本地数据安全。
+              如遇到问题，请联系管理员。
             </p>
           </div>
         </div>
