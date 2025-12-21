@@ -173,8 +173,8 @@ const InventoryView: React.FC = () => {
           />
         </div>
         
-        <div className="flex items-center space-x-2 w-full lg:w-auto">
-          <div className="relative flex-1 lg:flex-none">
+        <div className="flex items-center justify-between w-full lg:w-auto lg:justify-start">
+          <div className="relative flex-1 lg:flex-none lg:mr-2">
             <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-500" size={14} />
             <input
               type="date"
@@ -185,28 +185,32 @@ const InventoryView: React.FC = () => {
             />
           </div>
 
-          {/* 批量删除按钮 - 仅在有选中项且为今天时显示 */}
-          {isToday && selectedIds.length > 0 && (
-            <button
-              onClick={handleBatchDelete}
-              className="flex items-center space-x-2 px-4 py-3 bg-red-50 text-red-600 rounded-xl font-bold hover:bg-red-100 transition-colors animate-in zoom-in-95 duration-200"
-            >
-              <Trash2 size={18} />
-              <span className="hidden sm:inline">删除所选 ({selectedIds.length})</span>
-            </button>
-          )}
+          <div className="flex items-center space-x-2">
+            {/* 批量删除按钮 - 仅在有选中项且为今天时显示 */}
+            {isToday && selectedIds.length > 0 && (
+              <button
+                onClick={handleBatchDelete}
+                className="flex items-center space-x-2 px-4 py-3 bg-red-50 text-red-600 rounded-xl font-bold hover:bg-red-100 transition-colors animate-in zoom-in-95 duration-200"
+              >
+                <Trash2 size={18} />
+                <span className="hidden sm:inline">删除所选 ({selectedIds.length})</span>
+              </button>
+            )}
 
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            disabled={!isToday}
-            className="p-3 bg-blue-600 text-white rounded-xl shadow-lg disabled:opacity-30 hover:bg-blue-700 transition-colors"
-          >
-            <Plus size={20} />
-          </button>
-          <label className={`p-3 bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-100 cursor-pointer hover:bg-indigo-100 transition-colors ${!isToday ? 'opacity-30 pointer-events-none' : ''}`}>
-            <FileUp size={20} />
-            <input ref={fileInputRef} type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={!isToday} />
-          </label>
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              disabled={!isToday}
+              className="p-3 bg-blue-600 text-white rounded-xl shadow-lg disabled:opacity-30 hover:bg-blue-700 transition-colors"
+            >
+              <Plus size={20} />
+            </button>
+            
+            {/* Excel导入按钮 - 仅在桌面版显示 */}
+            <label className={`hidden lg:flex p-3 bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-100 cursor-pointer hover:bg-indigo-100 transition-colors ${!isToday ? 'opacity-30 pointer-events-none' : ''}`}>
+              <FileUp size={20} />
+              <input ref={fileInputRef} type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={!isToday} />
+            </label>
+          </div>
         </div>
       </div>
 
