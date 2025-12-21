@@ -1,7 +1,6 @@
 
 import { Material, DailyInventory, AuditLog, User } from '../types';
 
-// API 基础路径，假设 Worker 部署在同一域名或配置了 CORS
 const API_BASE = '/api';
 
 export const db = {
@@ -26,6 +25,27 @@ export const db = {
     }).format(new Date());
   },
 
+  // --- Settings (Dynamic Config) ---
+  getSettings: async (): Promise<Record<string, string>> => {
+    try {
+      const response = await fetch(`${API_BASE}/settings`);
+      if (!response.ok) throw new Error('Failed to fetch settings');
+      return response.json();
+    } catch (e) {
+      // 容错：返回默认值
+      return { LOW_STOCK_THRESHOLD: '10', SYSTEM_NAME: 'MaterialFlow Pro' };
+    }
+  },
+
+  saveSettings: async (settings: Record<string, string>): Promise<void> => {
+    await fetch(`${API_BASE}/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings)
+    });
+    await db.logAction('UPDATE', '更新了系统全局配置');
+  },
+
   // --- Auth ---
   getCurrentUser: (): User | null => {
     const data = localStorage.getItem('mf_pro_session');
@@ -48,7 +68,6 @@ export const db = {
   },
 
   initAuth: async () => {
-    // 后端 Worker 启动时应自动检查并创建默认 admin
     return fetch(`${API_BASE}/auth/init`, { method: 'POST' });
   },
 
@@ -95,7 +114,6 @@ export const db = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(record)
     });
-    // 注意：级联更新 (Cascade Update) 逻辑应移至后端 Worker 处理以保证事务一致性
   },
 
   initializeDate: async (date: string): Promise<void> => {

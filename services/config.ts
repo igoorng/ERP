@@ -1,8 +1,6 @@
-export const config = {
-  // 今日缺料预警阈值
-  LOW_STOCK_THRESHOLD: Number(import.meta.env.VITE_LOW_STOCK_THRESHOLD || 10),
-  // 系统默认账号
-  APP_USERNAME: import.meta.env.VITE_APP_USERNAME || 'admin',
-  // 系统默认密码
-  APP_PASSWORD: import.meta.env.VITE_APP_PASSWORD || 'admin',
-};
+
+/**
+ * ⚠️ 已弃用静态配置
+ * 现在所有的系统设置（LOW_STOCK_THRESHOLD 等）都通过 db.getSettings() 从 D1 数据库获取。
+ */
+export const config = {};

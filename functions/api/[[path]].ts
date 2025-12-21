@@ -1,17 +1,14 @@
 
 interface Env {
-  // Use any to bypass D1Database type check in environments without Cloudflare types
   DB: any;
 }
 
-// Use any for the function signature to resolve PagesFunction missing type error
 export const onRequest: any = async (context: any) => {
   const { request, env, params } = context;
   const url = new URL(request.url);
   const path = url.pathname.replace('/api', '');
   const method = request.method;
 
-  // 辅助函数：统一返回 JSON
   const json = (data: any, status = 200) => 
     new Response(JSON.stringify(data), { 
       status, 
@@ -19,28 +16,53 @@ export const onRequest: any = async (context: any) => {
     });
 
   try {
-    // --- 路由处理 ---
-
-    // 1. 身份验证
+    // 1. 身份验证 & 初始化
     if (path === '/auth/login' && method === 'POST') {
       const { username, password } = await request.json() as any;
-      // 生产环境应使用真正的哈希校验，这里演示 D1 查询
       const user = await env.DB.prepare("SELECT id, username, role FROM users WHERE username = ? AND password_hash = ?")
         .bind(username, password).first();
       return user ? json(user) : json({ error: 'Unauthorized' }, 401);
     }
 
     if (path === '/auth/init' && method === 'POST') {
-      const exists = await env.DB.prepare("SELECT id FROM users LIMIT 1").first();
-      if (!exists) {
+      // 初始化默认管理员
+      const userExists = await env.DB.prepare("SELECT id FROM users LIMIT 1").first();
+      if (!userExists) {
         await env.DB.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)")
           .bind('admin-id', 'admin', 'admin', 'admin').run();
-        return json({ message: 'Initialized' });
       }
-      return json({ message: 'Already initialized' });
+      
+      // 初始化默认设置
+      const settingsCount = await env.DB.prepare("SELECT COUNT(*) as count FROM settings").first();
+      if (settingsCount.count === 0) {
+        await env.DB.prepare("INSERT INTO settings (key, value) VALUES (?, ?), (?, ?)")
+          .bind('LOW_STOCK_THRESHOLD', '10', 'SYSTEM_NAME', 'MaterialFlow Pro').run();
+      }
+      
+      return json({ message: 'Success' });
     }
 
-    // 2. 物料管理
+    // 2. 系统设置 (Settings)
+    if (path === '/settings' && method === 'GET') {
+      const { results } = await env.DB.prepare("SELECT * FROM settings").all();
+      // 将 [{key: 'A', value: 'B'}] 转为 {A: 'B'}
+      const settingsMap = results.reduce((acc: any, curr: any) => {
+        acc[curr.key] = curr.value;
+        return acc;
+      }, {});
+      return json(settingsMap);
+    }
+
+    if (path === '/settings' && method === 'PUT') {
+      const settings = await request.json() as any;
+      for (const [key, value] of Object.entries(settings)) {
+        await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)")
+          .bind(key, String(value)).run();
+      }
+      return json({ success: true });
+    }
+
+    // 3. 物料管理 (Materials)
     if (path === '/materials' && method === 'GET') {
       const date = url.searchParams.get('date');
       let query = "SELECT * FROM materials";
@@ -58,11 +80,8 @@ export const onRequest: any = async (context: any) => {
       const id = crypto.randomUUID();
       await env.DB.prepare("INSERT INTO materials (id, name, unit, created_at) VALUES (?, ?, ?, ?)")
         .bind(id, name, unit, date).run();
-      
-      // 初始化当天库存
       await env.DB.prepare("INSERT INTO inventory (id, material_id, date, opening_stock, today_inbound, workshop_outbound, store_outbound, remaining_stock) VALUES (?, ?, ?, ?, 0, 0, 0, ?)")
         .bind(crypto.randomUUID(), id, date, initialStock, initialStock).run();
-        
       return json({ id, name, unit });
     }
 
@@ -74,7 +93,7 @@ export const onRequest: any = async (context: any) => {
       return json({ success: true });
     }
 
-    // 3. 库存操作 (核心级联逻辑)
+    // 4. 库存管理 (Inventory)
     if (path === '/inventory' && method === 'GET') {
       const date = url.searchParams.get('date');
       const { results } = await env.DB.prepare("SELECT * FROM inventory WHERE date = ?").bind(date).all();
@@ -83,15 +102,12 @@ export const onRequest: any = async (context: any) => {
 
     if (path === '/inventory' && method === 'PUT') {
       const record = await request.json() as any;
-      
-      // 1. 更新当前记录
       await env.DB.prepare(`
         UPDATE inventory SET 
         today_inbound = ?, workshop_outbound = ?, store_outbound = ?, remaining_stock = ?
         WHERE material_id = ? AND date = ?
       `).bind(record.todayInbound, record.workshopOutbound, record.storeOutbound, record.remainingStock, record.materialId, record.date).run();
 
-      // 2. 级联更新后续日期的 opening_stock (D1 暂不支持存储过程，我们在后端循环处理)
       const nextRecords = await env.DB.prepare("SELECT * FROM inventory WHERE material_id = ? AND date > ? ORDER BY date ASC")
         .bind(record.materialId, record.date).all();
       
@@ -102,23 +118,18 @@ export const onRequest: any = async (context: any) => {
           .bind(currentOpening, nextRemaining, next.id).run();
         currentOpening = nextRemaining;
       }
-
       return json({ success: true });
     }
 
     if (path === '/inventory/initialize' && method === 'POST') {
       const { date } = await request.json() as any;
-      // 获取所有未删除物料
       const mats = await env.DB.prepare("SELECT id FROM materials WHERE (deleted_at > ? OR deleted_at IS NULL)").bind(date).all();
-      
       for (const m of mats.results as any[]) {
         const exists = await env.DB.prepare("SELECT id FROM inventory WHERE material_id = ? AND date = ?").bind(m.id, date).first();
         if (!exists) {
-          // 查找前一天的记录
           const lastRecord = await env.DB.prepare("SELECT remaining_stock FROM inventory WHERE material_id = ? AND date < ? ORDER BY date DESC LIMIT 1")
             .bind(m.id, date).first() as any;
           const opening = lastRecord ? lastRecord.remaining_stock : 0;
-          
           await env.DB.prepare("INSERT INTO inventory (id, material_id, date, opening_stock, today_inbound, workshop_outbound, store_outbound, remaining_stock) VALUES (?, ?, ?, ?, 0, 0, 0, ?)")
             .bind(crypto.randomUUID(), m.id, date, opening, opening).run();
         }
@@ -126,7 +137,7 @@ export const onRequest: any = async (context: any) => {
       return json({ success: true });
     }
 
-    // 4. 统计与日志
+    // 5. 统计与日志
     if (path === '/stats' && method === 'GET') {
       const start = url.searchParams.get('start');
       const end = url.searchParams.get('end');
