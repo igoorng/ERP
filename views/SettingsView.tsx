@@ -45,11 +45,18 @@ const SettingsView: React.FC = () => {
   const handleSaveSettings = async () => {
     setSaving(true);
     try {
-      await db.saveSettings(settings);
+      // 显式传递当前 state 中的所有配置
+      await db.saveSettings({
+        SYSTEM_NAME: settings.SYSTEM_NAME || 'MaterialFlow Pro',
+        LOW_STOCK_THRESHOLD: settings.LOW_STOCK_THRESHOLD || '10'
+      });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
+      // 重新拉取一次以确认同步
+      const updated = await db.getSettings();
+      setSettings(updated);
     } catch (e) {
-      alert('保存失败，请检查数据库绑定');
+      alert('保存失败，请检查数据库绑定或网络连接');
     } finally {
       setSaving(false);
     }
@@ -138,7 +145,7 @@ const SettingsView: React.FC = () => {
               <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">系统显示名称</label>
               <input
                 type="text"
-                value={settings.SYSTEM_NAME}
+                value={settings.SYSTEM_NAME || ''}
                 onChange={(e) => setSettings({ ...settings, SYSTEM_NAME: e.target.value })}
                 className="w-full px-5 py-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:bg-white focus:border-blue-500 outline-none font-bold text-gray-700 transition-all"
                 placeholder="例如: 物料管理中心"
@@ -149,7 +156,7 @@ const SettingsView: React.FC = () => {
               <div className="relative">
                 <input
                   type="number"
-                  value={settings.LOW_STOCK_THRESHOLD}
+                  value={settings.LOW_STOCK_THRESHOLD || ''}
                   onChange={(e) => setSettings({ ...settings, LOW_STOCK_THRESHOLD: e.target.value })}
                   className="w-full px-5 py-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:bg-white focus:border-blue-500 outline-none font-bold text-gray-700 transition-all"
                 />
@@ -159,7 +166,7 @@ const SettingsView: React.FC = () => {
           </div>
         </section>
 
-        {/* 用户管理设置 (仅管理员可见或全员可见但受限) */}
+        {/* 用户管理设置 */}
         <section className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm">
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center space-x-3">

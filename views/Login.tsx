@@ -55,7 +55,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 <Lock className="text-white" size={32} />
               </div>
               <h1 className="text-3xl font-black tracking-tight">物料管理系统</h1>
-              <p className="mt-2 text-blue-100 text-sm font-medium">MaterialFlow Pro v1.2 Secure</p>
+              <p className="mt-2 text-blue-100 text-sm font-medium">专人专用</p>
             </div>
           </div>
           

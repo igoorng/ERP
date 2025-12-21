@@ -79,7 +79,7 @@ const Dashboard: React.FC = () => {
         <div>
           <h2 className="text-3xl font-black text-gray-900 tracking-tight">{settings.SYSTEM_NAME || 'MaterialFlow Pro'}</h2>
           <p className="text-sm text-gray-400 font-bold uppercase tracking-widest">
-            {todayStr} • 智能物料流动监控系统
+            {todayStr} • 物料流动监控系统
           </p>
         </div>
         <div className="flex items-center space-x-3">

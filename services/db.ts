@@ -3,6 +3,11 @@ import { Material, DailyInventory, AuditLog, User } from '../types';
 
 const API_BASE = '/api';
 
+const DEFAULT_SETTINGS = {
+  LOW_STOCK_THRESHOLD: '10',
+  SYSTEM_NAME: 'MaterialFlow Pro'
+};
+
 export const db = {
   // --- Time Utilities (强制亚洲/上海时区) ---
   getBeijingDate: (): string => {
@@ -37,19 +42,22 @@ export const db = {
     try {
       const response = await fetch(`${API_BASE}/settings`);
       if (!response.ok) throw new Error('Failed to fetch settings');
-      return response.json();
+      const data = await response.json();
+      // 合并默认值，确保所有必需的 Key 都存在
+      return { ...DEFAULT_SETTINGS, ...data };
     } catch (e) {
-      return { LOW_STOCK_THRESHOLD: '10', SYSTEM_NAME: 'MaterialFlow Pro' };
+      return { ...DEFAULT_SETTINGS };
     }
   },
 
   saveSettings: async (settings: Record<string, string>): Promise<void> => {
-    await fetch(`${API_BASE}/settings`, {
+    const response = await fetch(`${API_BASE}/settings`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(settings)
     });
-    await db.logAction('UPDATE', '更新了系统全局配置');
+    if (!response.ok) throw new Error('Failed to save settings');
+    await db.logAction('UPDATE', `更新了系统配置: ${Object.keys(settings).join(', ')}`);
   },
 
   // --- Auth & Users ---

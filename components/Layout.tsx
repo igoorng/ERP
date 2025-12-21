@@ -1,15 +1,16 @@
 
 import React, { useState } from 'react';
 import { ViewMode, User } from '../types';
+import { db } from '../services/db';
 import { 
   LayoutDashboard, 
   Package, 
+  BarChart3,
   FileText, 
   History, 
   LogOut,
   Menu,
   X,
-  BarChart3,
   Settings
 } from 'lucide-react';
 
@@ -25,12 +26,12 @@ const Layout: React.FC<LayoutProps> = ({ user, currentView, setView, onLogout, c
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const navItems = [
-    { id: ViewMode.DASHBOARD, label: '概览 Dashboard', icon: LayoutDashboard },
-    { id: ViewMode.INVENTORY, label: '物料管理 Inventory', icon: Package },
-    { id: ViewMode.STATISTICS, label: '数据统计 Statistics', icon: BarChart3 },
-    { id: ViewMode.REPORTS, label: '报表导出 Reports', icon: FileText },
-    { id: ViewMode.LOGS, label: '操作日志 Logs', icon: History },
-    { id: ViewMode.SETTINGS, label: '系统设置 Settings', icon: Settings },
+    { id: ViewMode.DASHBOARD, label: '概览', icon: LayoutDashboard },
+    { id: ViewMode.INVENTORY, label: '物料管理', icon: Package },
+    { id: ViewMode.STATISTICS, label: '数据统计', icon: BarChart3 },
+    { id: ViewMode.REPORTS, label: '报表导出', icon: FileText },
+    { id: ViewMode.LOGS, label: '操作日志', icon: History },
+    { id: ViewMode.SETTINGS, label: '系统设置', icon: Settings },
   ];
 
   const handleNavClick = (view: ViewMode) => {
@@ -109,13 +110,8 @@ const Layout: React.FC<LayoutProps> = ({ user, currentView, setView, onLogout, c
             </h1>
           </div>
           
-          <div className="hidden sm:block text-xs font-bold text-gray-400 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100">
-            {new Date().toLocaleDateString('zh-CN', { 
-              timeZone: 'Asia/Shanghai', 
-              month: 'long', 
-              day: 'numeric', 
-              weekday: 'short' 
-            })}
+          <div className="hidden sm:block text-xs font-black text-blue-600 bg-blue-50 px-4 py-2 rounded-2xl border border-blue-100 shadow-sm shadow-blue-50">
+            {db.getBeijingDate()}
           </div>
         </header>
 
