@@ -26,12 +26,12 @@ const Layout: React.FC<LayoutProps> = ({ user, currentView, setView, onLogout, c
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const navItems = [
-    { id: ViewMode.DASHBOARD, label: '仓库看板', icon: LayoutDashboard },
+    { id: ViewMode.DASHBOARD, label: '仓库信息看板', icon: LayoutDashboard },
     { id: ViewMode.INVENTORY, label: '实时库存管理', icon: Package },
-    { id: ViewMode.STATISTICS, label: '历史变动', icon: BarChart3 },
-    { id: ViewMode.REPORTS, label: '报表导出', icon: FileText },
-    { id: ViewMode.LOGS, label: '操作审计', icon: History },
-    { id: ViewMode.SETTINGS, label: '系统配置', icon: Settings },
+    { id: ViewMode.STATISTICS, label: '历史库存变动', icon: BarChart3 },
+    { id: ViewMode.REPORTS, label: '物料报表导出', icon: FileText },
+    { id: ViewMode.LOGS, label: '操作审计日志', icon: History },
+    { id: ViewMode.SETTINGS, label: '系统配置信息', icon: Settings },
   ];
 
   const handleNavClick = (view: ViewMode) => {
