@@ -104,7 +104,7 @@ export const onRequest: any = async (context: any) => {
       const { results } = await env.DB.prepare(`SELECT id, name, unit, base_unit AS baseUnit, created_at AS createdAt FROM "materials" ${where} ORDER BY name LIMIT ? OFFSET ?`)
         .bind(...params, pageSize, offset).all();
       
-      return json({ materials: results, total, hasMore: offset + results.length < total });
+      return json({ materials: results || [], total: total || 0, hasMore: offset + (results?.length || 0) < (total || 0) });
     }
 
     if (path === '/materials' && method === 'POST') {
@@ -155,7 +155,7 @@ export const onRequest: any = async (context: any) => {
                workshop_outbound AS workshopOutbound, store_outbound AS storeOutbound, remaining_stock AS remainingStock 
         FROM "inventory" WHERE date = ?
       `).bind(date).all();
-      return json(results);
+      return json(results || []);
     }
 
     if (path === '/inventory/paginated' && method === 'GET') {
@@ -178,7 +178,7 @@ export const onRequest: any = async (context: any) => {
         FROM "inventory" i JOIN "materials" m ON i.material_id = m.id ${where} ORDER BY m.name LIMIT ? OFFSET ?
       `).bind(...params, pageSize, offset).all();
       
-      return json({ inventory: results, total, hasMore: offset + results.length < total });
+      return json({ inventory: results || [], total: total || 0, hasMore: offset + (results?.length || 0) < (total || 0) });
     }
 
     if (path === '/inventory' && method === 'PUT') {
@@ -208,25 +208,30 @@ export const onRequest: any = async (context: any) => {
       const end = url.searchParams.get('end');
       if (!start || !end) return json({ error: 'Missing start or end date' }, 400);
 
-      const { results } = await env.DB.prepare(`
-        SELECT 
-          m.name,
-          SUM(i.today_inbound) as totalIn,
-          SUM(i.workshop_outbound) as totalWorkshop,
-          SUM(i.store_outbound) as totalStore,
-          (
-            SELECT remaining_stock 
-            FROM "inventory" 
-            WHERE material_id = i.material_id AND date <= ? 
-            ORDER BY date DESC LIMIT 1
-          ) as currentStock
-        FROM "inventory" i
-        JOIN "materials" m ON i.material_id = m.id
-        WHERE i.date >= ? AND i.date <= ?
-        GROUP BY i.material_id, m.name
-      `).bind(end, start, end).all();
+      try {
+        // 使用更明确的别名以防自连接或相关子查询混淆
+        const { results } = await env.DB.prepare(`
+          SELECT 
+            m.name,
+            COALESCE(SUM(i.today_inbound), 0) as totalIn,
+            COALESCE(SUM(i.workshop_outbound), 0) as totalWorkshop,
+            COALESCE(SUM(i.store_outbound), 0) as totalStore,
+            (
+              SELECT sub_i.remaining_stock 
+              FROM "inventory" sub_i 
+              WHERE sub_i.material_id = i.material_id AND sub_i.date <= ? 
+              ORDER BY sub_i.date DESC LIMIT 1
+            ) as currentStock
+          FROM "inventory" i
+          JOIN "materials" m ON i.material_id = m.id
+          WHERE i.date >= ? AND i.date <= ?
+          GROUP BY i.material_id, m.name
+        `).bind(end, start, end).all();
 
-      return json(results);
+        return json(results || []);
+      } catch (err: any) {
+        return json({ error: `Query execution failed: ${err.message}` }, 500);
+      }
     }
 
     if (path === '/settings' && method === 'GET') {
@@ -244,7 +249,7 @@ export const onRequest: any = async (context: any) => {
 
     if (path === '/logs' && method === 'GET') {
       const { results } = await env.DB.prepare('SELECT * FROM "audit_logs" ORDER BY timestamp DESC LIMIT 100').all();
-      return json(results);
+      return json(results || []);
     }
 
     if (path === '/logs' && method === 'POST') {
@@ -255,7 +260,7 @@ export const onRequest: any = async (context: any) => {
 
     if (path === '/users' && method === 'GET') {
       const { results } = await env.DB.prepare('SELECT id, username, role FROM "users"').all();
-      return json(results);
+      return json(results || []);
     }
 
     if (path === '/users' && method === 'POST') {
@@ -287,6 +292,7 @@ export const onRequest: any = async (context: any) => {
 
     return json({ error: 'Not found' }, 404);
   } catch (e: any) {
-    return json({ error: e.message }, 500);
+    console.error(`API Runtime Error: ${e.message}`, e);
+    return json({ error: `Internal Server Error: ${e.message}` }, 500);
   }
 };

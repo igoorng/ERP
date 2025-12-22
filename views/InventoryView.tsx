@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from '../services/db';
 import { Material, DailyInventory } from '../types';
-import { Plus, Search, Trash2, X, Calendar as CalendarIcon, Loader2, FileUp, CheckSquare, Square, AlertCircle, RefreshCw } from 'lucide-react';
+import { Plus, Search, Trash2, X, Calendar as CalendarIcon, Loader2, FileUp, CheckSquare, Square, AlertCircle, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 
 declare const XLSX: any;
 
@@ -14,7 +14,7 @@ const InventoryView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(20);
+  const [pageSize] = useState(15);
   const [totalItems, setTotalItems] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   
@@ -34,7 +34,10 @@ const InventoryView: React.FC = () => {
   const loadData = async (forceRefresh: boolean = false, page: number = 1, search: string = '') => {
     setLoading(true);
     try {
-      await db.initializeDate(date);
+      // 只有在加载第一页或日期变化时初始化日期数据，防止翻页太慢
+      if (page === 1) {
+        await db.initializeDate(date);
+      }
       
       const [matsData, invData] = await Promise.all([
         db.getMaterialsPaginated(page, pageSize, date, search, forceRefresh),
@@ -53,10 +56,19 @@ const InventoryView: React.FC = () => {
     }
   };
 
+  // 搜索和日期变化触发首屏加载
   useEffect(() => {
     setCurrentPage(1);
-    loadData(false, 1, searchTerm);
+    const timer = setTimeout(() => {
+      loadData(false, 1, searchTerm);
+    }, 300); // 搜索防抖
+    return () => clearTimeout(timer);
   }, [date, searchTerm]);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage < 1 || (newPage > Math.ceil(totalItems / pageSize) && totalItems > 0)) return;
+    loadData(false, newPage, searchTerm);
+  };
 
   const handleInputChange = async (materialId: string, field: keyof DailyInventory, value: string) => {
     if (!isToday) return;
@@ -84,7 +96,7 @@ const InventoryView: React.FC = () => {
       await db.addMaterial(newMat.name, newMat.unit, newMat.baseUnit || newMat.unit, newMat.initialStock, date);
       setIsAddModalOpen(false);
       setNewMat({ name: '', unit: '', baseUnit: '', initialStock: 0 });
-      await loadData(true);
+      await loadData(true, 1, searchTerm);
     } catch (err: any) {
       alert(`添加失败: ${err.message}`);
     } finally {
@@ -98,7 +110,7 @@ const InventoryView: React.FC = () => {
       setLoading(true);
       try {
         await db.deleteMaterial(id, date);
-        await loadData(true);
+        await loadData(true, currentPage, searchTerm);
       } catch (err: any) {
         alert(`删除失败: ${err.message}`);
       } finally {
@@ -114,7 +126,7 @@ const InventoryView: React.FC = () => {
       try {
         await db.deleteMaterials(selectedIds, date);
         setSelectedIds([]);
-        await loadData(true);
+        await loadData(true, 1, searchTerm);
       } catch (err: any) {
         alert(`批量删除失败: ${err.message}`);
       } finally {
@@ -149,7 +161,7 @@ const InventoryView: React.FC = () => {
           }
         }
         alert(`导入成功！共新增 ${count} 项物料。`);
-        await loadData(true);
+        await loadData(true, 1, searchTerm);
       } catch (err: any) {
         alert(`导入失败: ${err.message}`);
       } finally {
@@ -166,15 +178,15 @@ const InventoryView: React.FC = () => {
 
   const toggleSelectAll = () => {
     if (isAllSelected) {
-      // 如果已全选，则移除当前页的所有 ID
       const pageIds = inventory.map(i => i.materialId);
       setSelectedIds(prev => prev.filter(id => !pageIds.includes(id)));
     } else {
-      // 否则增加当前页的所有 ID
       const pageIds = inventory.map(i => i.materialId);
       setSelectedIds(prev => Array.from(new Set([...prev, ...pageIds])));
     }
   };
+
+  const totalPages = Math.ceil(totalItems / pageSize);
 
   return (
     <div className="space-y-4 pb-20">
@@ -183,7 +195,7 @@ const InventoryView: React.FC = () => {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input
             type="text"
-            placeholder="搜索物料..."
+            placeholder="搜索物料名称..."
             className="w-full pl-12 pr-4 py-3 bg-gray-50 rounded-xl font-bold outline-none border-2 border-transparent focus:border-blue-500 transition-all"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -226,135 +238,181 @@ const InventoryView: React.FC = () => {
             <input ref={fileInputRef} type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={!isToday} />
           </label>
 
-          <button onClick={() => loadData(true)} className="p-3 bg-gray-50 text-gray-400 rounded-xl hover:text-blue-600 transition-colors" title="刷新数据">
+          <button onClick={() => loadData(true, currentPage, searchTerm)} className="p-3 bg-gray-50 text-gray-400 rounded-xl hover:text-blue-600 transition-colors" title="刷新数据">
             <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
 
-      {loading && inventory.length === 0 ? (
-        <div className="py-20 flex flex-col items-center justify-center text-gray-400">
-          <Loader2 className="animate-spin mb-4 text-blue-500" size={48} />
-          <p className="font-black text-sm uppercase tracking-widest">数据同步中...</p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-gray-50/50 border-b border-gray-100">
-                <tr>
-                  <th className="px-6 py-5 w-16 text-center">
-                    <button 
-                      onClick={toggleSelectAll} 
-                      disabled={!isToday || inventory.length === 0}
-                      className="transition-transform active:scale-90"
-                    >
-                      {isAllSelected ? (
-                        <CheckSquare className="text-blue-600" size={22} />
-                      ) : (
-                        <Square className="text-gray-300" size={22} />
-                      )}
-                    </button>
-                  </th>
-                  <th className="px-4 py-5 font-black text-gray-400 text-[10px] uppercase tracking-widest">物料名称</th>
-                  <th className="px-4 py-5 font-black text-gray-400 text-[10px] uppercase tracking-widest">计量单位</th>
-                  <th className="px-4 py-5 font-black text-gray-400 text-[10px] uppercase tracking-widest">物料单位</th>
-                  <th className="px-4 py-5 text-center font-black text-gray-400 text-[10px] uppercase tracking-widest">昨日库存</th>
-                  <th className="px-4 py-5 text-center font-black text-blue-600 text-[10px] uppercase tracking-widest">今日入库</th>
-                  <th className="px-4 py-5 text-center font-black text-orange-600 text-[10px] uppercase tracking-widest">车间出库</th>
-                  <th className="px-4 py-5 text-center font-black text-purple-600 text-[10px] uppercase tracking-widest">店面出库</th>
-                  <th className="px-4 py-5 text-center font-black text-gray-900 text-[10px] uppercase tracking-widest">实时库存</th>
-                  <th className="px-4 py-5"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {inventory.map(item => {
-                  const mat = materials.find(m => m.id === item.materialId);
-                  const isSelected = selectedIds.includes(item.materialId);
-                  return (
-                    <tr 
-                      key={item.id} 
-                      className={`
-                        transition-all hover:bg-gray-50/80
-                        ${isSelected ? 'bg-blue-50/40' : ''}
-                      `}
-                    >
-                      <td className="px-6 py-5 text-center">
-                        <button onClick={() => toggleSelect(item.materialId)} disabled={!isToday}>
-                          {isSelected ? (
-                            <CheckSquare className="text-blue-600" size={20} />
-                          ) : (
-                            <Square className="text-gray-300 hover:text-gray-400" size={20} />
-                          )}
-                        </button>
-                      </td>
-                      <td className="px-4 py-5 font-black text-gray-900">{mat?.name}</td>
-                      <td className="px-4 py-5">
-                         <span className="px-2 py-1 bg-indigo-50 text-indigo-600 text-[10px] font-black rounded-lg">
-                           {mat?.baseUnit}
-                         </span>
-                      </td>
-                      <td className="px-4 py-5 font-bold text-gray-500">{mat?.unit}</td>
-                      <td className="px-4 py-5 text-center font-mono font-bold text-gray-400">{item.openingStock}</td>
-                      <td className="px-4 py-5">
-                        <input 
-                          type="number" 
-                          disabled={!isToday} 
-                          value={item.todayInbound || ''} 
-                          onChange={(e) => handleInputChange(item.materialId, 'todayInbound', e.target.value)} 
-                          className="w-full p-2 bg-blue-50/50 rounded-lg text-center font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
-                          placeholder="0"
-                        />
-                      </td>
-                      <td className="px-4 py-5">
-                        <input 
-                          type="number" 
-                          disabled={!isToday} 
-                          value={item.workshopOutbound || ''} 
-                          onChange={(e) => handleInputChange(item.materialId, 'workshopOutbound', e.target.value)} 
-                          className="w-full p-2 bg-orange-50/50 rounded-lg text-center font-bold focus:ring-2 focus:ring-orange-500 outline-none transition-all" 
-                          placeholder="0"
-                        />
-                      </td>
-                      <td className="px-4 py-5">
-                        <input 
-                          type="number" 
-                          disabled={!isToday} 
-                          value={item.storeOutbound || ''} 
-                          onChange={(e) => handleInputChange(item.materialId, 'storeOutbound', e.target.value)} 
-                          className="w-full p-2 bg-purple-50/50 rounded-lg text-center font-bold focus:ring-2 focus:ring-purple-500 outline-none transition-all" 
-                          placeholder="0"
-                        />
-                      </td>
-                      <td className={`px-4 py-5 text-center font-black text-xl tracking-tighter ${item.remainingStock < 10 ? 'text-red-600 animate-pulse' : 'text-blue-900'}`}>
-                        {item.remainingStock}
-                      </td>
-                      <td className="px-4 py-5">
-                        {isToday && (
-                          <button 
-                            onClick={() => handleDeleteMaterial(item.materialId, mat?.name || '')} 
-                            className="text-gray-300 hover:text-red-500 transition-colors p-2"
-                          >
-                            <Trash2 size={18}/>
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden relative">
+        {loading && (
+          <div className="absolute inset-0 bg-white/50 backdrop-blur-[2px] z-10 flex items-center justify-center">
+             <Loader2 className="animate-spin text-blue-600" size={40} />
           </div>
-          {inventory.length === 0 && !loading && (
-            <div className="py-20 text-center flex flex-col items-center">
-              <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-4">
-                <AlertCircle className="text-gray-200" size={40} />
-              </div>
-              <p className="text-gray-400 font-bold uppercase tracking-widest text-sm">暂无匹配的物料记录</p>
-            </div>
-          )}
+        )}
+        
+        <div className="overflow-x-auto min-h-[400px]">
+          <table className="w-full text-left">
+            <thead className="bg-gray-50/50 border-b border-gray-100">
+              <tr>
+                <th className="px-6 py-5 w-16 text-center">
+                  <button 
+                    onClick={toggleSelectAll} 
+                    disabled={!isToday || inventory.length === 0}
+                    className="transition-transform active:scale-90"
+                  >
+                    {isAllSelected ? (
+                      <CheckSquare className="text-blue-600" size={22} />
+                    ) : (
+                      <Square className="text-gray-300" size={22} />
+                    )}
+                  </button>
+                </th>
+                <th className="px-4 py-5 font-black text-gray-400 text-[10px] uppercase tracking-widest">物料名称</th>
+                <th className="px-4 py-5 font-black text-gray-400 text-[10px] uppercase tracking-widest">计量单位</th>
+                <th className="px-4 py-5 font-black text-gray-400 text-[10px] uppercase tracking-widest">物料单位</th>
+                <th className="px-4 py-5 text-center font-black text-gray-400 text-[10px] uppercase tracking-widest">昨日库存</th>
+                <th className="px-4 py-5 text-center font-black text-blue-600 text-[10px] uppercase tracking-widest">今日入库</th>
+                <th className="px-4 py-5 text-center font-black text-orange-600 text-[10px] uppercase tracking-widest">车间出库</th>
+                <th className="px-4 py-5 text-center font-black text-purple-600 text-[10px] uppercase tracking-widest">店面出库</th>
+                <th className="px-4 py-5 text-center font-black text-gray-900 text-[10px] uppercase tracking-widest">实时库存</th>
+                <th className="px-4 py-5"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {inventory.map(item => {
+                const mat = materials.find(m => m.id === item.materialId);
+                const isSelected = selectedIds.includes(item.materialId);
+                return (
+                  <tr 
+                    key={item.id} 
+                    className={`
+                      transition-all hover:bg-gray-50/80
+                      ${isSelected ? 'bg-blue-50/40' : ''}
+                    `}
+                  >
+                    <td className="px-6 py-5 text-center">
+                      <button onClick={() => toggleSelect(item.materialId)} disabled={!isToday}>
+                        {isSelected ? (
+                          <CheckSquare className="text-blue-600" size={20} />
+                        ) : (
+                          <Square className="text-gray-300 hover:text-gray-400" size={20} />
+                        )}
+                      </button>
+                    </td>
+                    <td className="px-4 py-5 font-black text-gray-900">{mat?.name}</td>
+                    <td className="px-4 py-5">
+                       <span className="px-2 py-1 bg-indigo-50 text-indigo-600 text-[10px] font-black rounded-lg">
+                         {mat?.baseUnit}
+                       </span>
+                    </td>
+                    <td className="px-4 py-5 font-bold text-gray-500">{mat?.unit}</td>
+                    <td className="px-4 py-5 text-center font-mono font-bold text-gray-400">{item.openingStock}</td>
+                    <td className="px-4 py-5">
+                      <input 
+                        type="number" 
+                        disabled={!isToday} 
+                        value={item.todayInbound || ''} 
+                        onChange={(e) => handleInputChange(item.materialId, 'todayInbound', e.target.value)} 
+                        className="w-full p-2 bg-blue-50/50 rounded-lg text-center font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
+                        placeholder="0"
+                      />
+                    </td>
+                    <td className="px-4 py-5">
+                      <input 
+                        type="number" 
+                        disabled={!isToday} 
+                        value={item.workshopOutbound || ''} 
+                        onChange={(e) => handleInputChange(item.materialId, 'workshopOutbound', e.target.value)} 
+                        className="w-full p-2 bg-orange-50/50 rounded-lg text-center font-bold focus:ring-2 focus:ring-orange-500 outline-none transition-all" 
+                        placeholder="0"
+                      />
+                    </td>
+                    <td className="px-4 py-5">
+                      <input 
+                        type="number" 
+                        disabled={!isToday} 
+                        value={item.storeOutbound || ''} 
+                        onChange={(e) => handleInputChange(item.materialId, 'storeOutbound', e.target.value)} 
+                        className="w-full p-2 bg-purple-50/50 rounded-lg text-center font-bold focus:ring-2 focus:ring-purple-500 outline-none transition-all" 
+                        placeholder="0"
+                      />
+                    </td>
+                    <td className={`px-4 py-5 text-center font-black text-xl tracking-tighter ${item.remainingStock < 10 ? 'text-red-600 animate-pulse' : 'text-blue-900'}`}>
+                      {item.remainingStock}
+                    </td>
+                    <td className="px-4 py-5">
+                      {isToday && (
+                        <button 
+                          onClick={() => handleDeleteMaterial(item.materialId, mat?.name || '')} 
+                          className="text-gray-300 hover:text-red-500 transition-colors p-2"
+                        >
+                          <Trash2 size={18}/>
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-      )}
+
+        {inventory.length === 0 && !loading && (
+          <div className="py-20 text-center flex flex-col items-center">
+            <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+              <AlertCircle className="text-gray-200" size={40} />
+            </div>
+            <p className="text-gray-400 font-bold uppercase tracking-widest text-sm">
+              {searchTerm ? `没有找到与 "${searchTerm}" 相关的物料` : '暂无匹配的物料记录'}
+            </p>
+          </div>
+        )}
+
+        {/* 分页控制 UI */}
+        <div className="px-6 py-5 bg-gray-50/50 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+            共 {totalItems} 项物料 • 第 {currentPage} / {totalPages || 1} 页
+          </div>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1 || loading}
+              className="p-2 bg-white border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+            >
+              <ChevronLeft size={20} />
+            </button>
+            <div className="flex items-center space-x-1">
+              {[...Array(Math.min(5, totalPages))].map((_, i) => {
+                // 简单的分页逻辑，显示当前页附近的几个页码
+                let pageNum = currentPage;
+                if (currentPage <= 3) pageNum = i + 1;
+                else if (currentPage >= totalPages - 2) pageNum = totalPages - 4 + i;
+                else pageNum = currentPage - 2 + i;
+
+                if (pageNum < 1 || pageNum > totalPages) return null;
+
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => handlePageChange(pageNum)}
+                    className={`w-10 h-10 rounded-xl font-black text-sm transition-all ${currentPage === pageNum ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'bg-white text-gray-400 hover:bg-gray-50 border border-gray-100'}`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={!hasMore || loading}
+              className="p-2 bg-white border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+            >
+              <ChevronRight size={20} />
+            </button>
+          </div>
+        </div>
+      </div>
 
       {isAddModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
