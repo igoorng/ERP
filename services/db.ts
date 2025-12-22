@@ -1,4 +1,3 @@
-
 import { Material, DailyInventory, AuditLog, User } from '../types';
 import { withPerformanceMonitoring } from './monitoring';
 
@@ -283,15 +282,15 @@ export const db = {
     return data;
   },
 
-  addMaterial: async (name: string, unit: string, initialStock: number, date: string): Promise<Material> => {
+  addMaterial: async (name: string, unit: string, baseUnit: string, initialStock: number, date: string): Promise<Material> => {
     const ts = db.getBeijingDayStartTimestamp(date);
     const response = await fetch(`${API_BASE}/materials`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, unit, initialStock, date, timestamp: ts })
+      body: JSON.stringify({ name, unit, baseUnit, initialStock, date, timestamp: ts })
     });
     const result = await response.json();
-    await db.logAction('CREATE', `新增物料: ${name} (期初: ${initialStock})`);
+    await db.logAction('CREATE', `新增物料: ${name} (单位: ${unit}, 基本单位: ${baseUnit}, 期初: ${initialStock})`);
     db.clearCache();
     return result;
   },

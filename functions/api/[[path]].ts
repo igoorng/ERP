@@ -47,7 +47,7 @@ export const onRequest: any = async (context: any) => {
     if (path === '/auth/init' && method === 'POST') {
       const sqls = [
         `CREATE TABLE IF NOT EXISTS "users" ("id" TEXT PRIMARY KEY, "username" TEXT UNIQUE, "password_hash" TEXT, "role" TEXT)`,
-        `CREATE TABLE IF NOT EXISTS "materials" ("id" TEXT PRIMARY KEY, "name" TEXT, "unit" TEXT, "created_at" INTEGER, "deleted_at" INTEGER)`,
+        `CREATE TABLE IF NOT EXISTS "materials" ("id" TEXT PRIMARY KEY, "name" TEXT, "unit" TEXT, "base_unit" TEXT, "created_at" INTEGER, "deleted_at" INTEGER)`,
         `CREATE TABLE IF NOT EXISTS "inventory" ("id" TEXT PRIMARY KEY, "material_id" TEXT, "date" TEXT, "opening_stock" REAL, "today_inbound" REAL, "workshop_outbound" REAL, "store_outbound" REAL, "remaining_stock" REAL)`,
         `CREATE TABLE IF NOT EXISTS "audit_logs" ("id" TEXT PRIMARY KEY, "user_id" TEXT, "username" TEXT, "action" TEXT, "details" TEXT, "timestamp" TEXT)`,
         `CREATE TABLE IF NOT EXISTS "settings" ("key" TEXT PRIMARY KEY, "value" TEXT)`
@@ -55,6 +55,12 @@ export const onRequest: any = async (context: any) => {
       for (const sql of sqls) {
         await env.DB.prepare(sql).run();
       }
+      
+      // 动态列检查：如果 base_unit 不存在则添加（用于平滑升级）
+      try {
+        await env.DB.prepare(`ALTER TABLE "materials" ADD COLUMN "base_unit" TEXT`).run();
+      } catch (e) {}
+
       // 插入默认数据
       await env.DB.prepare(`INSERT OR IGNORE INTO "users" ("id", "username", "password_hash", "role") VALUES (?, ?, ?, ?)`).bind('admin-id', 'admin', 'admin', 'admin').run();
       await env.DB.prepare(`INSERT OR IGNORE INTO "settings" ("key", "value") VALUES (?, ?)`).bind('LOW_STOCK_THRESHOLD', '10').run();
@@ -78,7 +84,7 @@ export const onRequest: any = async (context: any) => {
         const cached = await cache.get(cacheKey);
         if (cached) return json(cached, 200, 'HIT');
       }
-      let query = 'SELECT id, name, unit, created_at AS createdAt, deleted_at AS deletedAt FROM "materials"';
+      let query = 'SELECT id, name, unit, base_unit AS baseUnit, created_at AS createdAt, deleted_at AS deletedAt FROM "materials"';
       let params: any[] = [];
       if (timestamp !== 'current') {
         const ts = parseInt(timestamp);
@@ -104,15 +110,15 @@ export const onRequest: any = async (context: any) => {
         params.push(`%${search}%`);
       }
       const total = await env.DB.prepare(`SELECT COUNT(*) as count FROM "materials" ${where}`).bind(...params).first('count');
-      const { results } = await env.DB.prepare(`SELECT id, name, unit, created_at AS createdAt FROM "materials" ${where} ORDER BY name LIMIT ? OFFSET ?`)
+      const { results } = await env.DB.prepare(`SELECT id, name, unit, base_unit AS baseUnit, created_at AS createdAt FROM "materials" ${where} ORDER BY name LIMIT ? OFFSET ?`)
         .bind(...params, parseInt(pageSize), offset).all();
       return json({ materials: results, total, hasMore: offset + results.length < total });
     }
 
     if (path === '/materials' && method === 'POST') {
-      const { name, unit, initialStock, date, timestamp } = await request.json() as any;
+      const { name, unit, baseUnit, initialStock, date, timestamp } = await request.json() as any;
       const id = crypto.randomUUID();
-      await env.DB.prepare(`INSERT INTO "materials" (id, name, unit, created_at) VALUES (?, ?, ?, ?)`).bind(id, name, unit, timestamp).run();
+      await env.DB.prepare(`INSERT INTO "materials" (id, name, unit, base_unit, created_at) VALUES (?, ?, ?, ?, ?)`).bind(id, name, unit, baseUnit || unit, timestamp).run();
       await env.DB.prepare(`INSERT INTO "inventory" (id, material_id, date, opening_stock, today_inbound, workshop_outbound, store_outbound, remaining_stock) VALUES (?, ?, ?, ?, 0, 0, 0, ?)`).bind(crypto.randomUUID(), id, date, initialStock, initialStock).run();
       if (cache) await cache.deletePattern('mf:materials:');
       return json({ id });

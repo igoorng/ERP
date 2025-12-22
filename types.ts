@@ -1,4 +1,3 @@
-
 export interface User {
   id: string;
   username: string;
@@ -9,6 +8,7 @@ export interface Material {
   id: string;
   name: string;
   unit: string;
+  baseUnit: string; // 新增：基本计量单位
   createdAt: number; // Unix Timestamp (ms)
   deletedAt?: number; // Unix Timestamp (ms)
 }

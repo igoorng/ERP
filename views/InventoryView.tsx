@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from '../services/db';
 import { Material, DailyInventory } from '../types';
@@ -21,10 +20,9 @@ const InventoryView: React.FC = () => {
   
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [newMat, setNewMat] = useState({ name: '', unit: '', initialStock: 0 });
+  const [newMat, setNewMat] = useState({ name: '', unit: '', baseUnit: '', initialStock: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Fix: Use ReturnType<typeof setTimeout> instead of NodeJS.Timeout to avoid errors in strictly browser-based environments
   const preloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isToday = useMemo(() => date === today, [date, today]);
@@ -112,9 +110,9 @@ const InventoryView: React.FC = () => {
     if (!isToday || !newMat.name || !newMat.unit) return;
     setLoading(true);
     try {
-      await db.addMaterial(newMat.name, newMat.unit, newMat.initialStock, date);
+      await db.addMaterial(newMat.name, newMat.unit, newMat.baseUnit || newMat.unit, newMat.initialStock, date);
       setIsAddModalOpen(false);
-      setNewMat({ name: '', unit: '', initialStock: 0 });
+      setNewMat({ name: '', unit: '', baseUnit: '', initialStock: 0 });
       await loadData(true, currentPage, searchTerm);
     } catch (e) {
       alert('添加失败');
@@ -177,8 +175,9 @@ const InventoryView: React.FC = () => {
         for (const row of (data as any[])) {
           const name = row['物料名称'] || row['名称'];
           const unit = row['物料单位'] || row['单位'];
+          const baseUnit = row['基本计量单位'] || row['基本单位'] || unit;
           const stock = Number(row['昨日库存'] || row['期初库存'] || 0);
-          if (name && unit) await db.addMaterial(String(name), String(unit), stock, date);
+          if (name && unit) await db.addMaterial(String(name), String(unit), String(baseUnit), stock, date);
         }
         await loadData(true);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -272,6 +271,7 @@ const InventoryView: React.FC = () => {
                     </button>
                   </th>
                   <th className="px-4 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">物料名称</th>
+                  <th className="px-4 py-5 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">基本单位</th>
                   <th className="px-4 py-5 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">物料单位</th>
                   <th className="px-6 py-5 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">昨日库存</th>
                   <th className="px-6 py-5 text-center text-[10px] font-black text-blue-600 uppercase tracking-widest">今日入库</th>
@@ -297,6 +297,7 @@ const InventoryView: React.FC = () => {
                         </button>
                       </td>
                       <td className="px-4 py-5 font-black text-gray-900">{mat?.name || '加载中...'}</td>
+                      <td className="px-4 py-5 text-center font-bold text-indigo-500">{mat?.baseUnit || '-'}</td>
                       <td className="px-4 py-5 text-center font-bold text-gray-500">{mat?.unit || '-'}</td>
                       <td className="px-6 py-5 text-center font-mono font-black text-gray-400">{item.openingStock}</td>
                       <td className="px-6 py-5 text-center">
@@ -362,8 +363,9 @@ const InventoryView: React.FC = () => {
                       )}
                       <div>
                         <h4 className="font-black text-gray-900 leading-tight">{mat?.name || '...'}</h4>
-                        <div className="flex items-center space-x-2 mt-1">
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
                           <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">单位: {mat?.unit || '-'}</span>
+                          <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">基本单位: {mat?.baseUnit || '-'}</span>
                           <span className="text-[10px] font-black text-gray-400">昨存: {item.openingStock}</span>
                         </div>
                       </div>
@@ -430,7 +432,7 @@ const InventoryView: React.FC = () => {
               <h3 className="font-black text-lg">新增物料资产</h3>
               <button onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-white/20 rounded-lg"><X size={20}/></button>
             </div>
-            <form onSubmit={handleAddSubmit} className="p-8 space-y-6">
+            <form onSubmit={handleAddSubmit} className="p-8 space-y-5">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">物料名称</label>
                 <input required value={newMat.name} onChange={e => setNewMat({...newMat, name: e.target.value})} className="w-full px-5 py-4 bg-gray-50 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500" placeholder="例如：面粉、芝麻..." />
@@ -441,9 +443,13 @@ const InventoryView: React.FC = () => {
                   <input required value={newMat.unit} onChange={e => setNewMat({...newMat, unit: e.target.value})} className="w-full px-5 py-4 bg-gray-50 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500" placeholder="kg/袋" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">期初库存</label>
-                  <input type="number" required value={newMat.initialStock} onChange={e => setNewMat({...newMat, initialStock: parseInt(e.target.value) || 0})} className="w-full px-5 py-4 bg-gray-50 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500" placeholder="0" />
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">基本单位</label>
+                  <input required value={newMat.baseUnit} onChange={e => setNewMat({...newMat, baseUnit: e.target.value})} className="w-full px-5 py-4 bg-indigo-50/50 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-indigo-500" placeholder="标准计量单位" />
                 </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">期初库存</label>
+                <input type="number" required value={newMat.initialStock} onChange={e => setNewMat({...newMat, initialStock: parseInt(e.target.value) || 0})} className="w-full px-5 py-4 bg-gray-50 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500" placeholder="0" />
               </div>
               <button type="submit" className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl shadow-xl hover:bg-blue-700 transition-all active:scale-95">确认入库</button>
             </form>

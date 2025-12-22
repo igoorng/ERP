@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { db } from '../services/db';
 import { Download, Calendar, FileSpreadsheet, CheckCircle, Circle, Loader2 } from 'lucide-react';
@@ -7,6 +6,7 @@ declare const XLSX: any;
 
 const AVAILABLE_COLUMNS = [
   { id: 'name', label: '物料名称', key: '物料名称' },
+  { id: 'baseUnit', label: '基本单位', key: '基本计量单位' },
   { id: 'unit', label: '物料单位', key: '物料单位' },
   { id: 'opening', label: '昨日库存', key: '昨日库存' },
   { id: 'inbound', label: '今日入库', key: '今日入库' },
@@ -20,7 +20,7 @@ const ReportsView: React.FC = () => {
   const [maxDate, setMaxDate] = useState(db.getBeijingDate());
   const [date, setDate] = useState(db.getBeijingDate());
   const [loading, setLoading] = useState(false);
-  const [selectedCols, setSelectedCols] = useState<string[]>(['name', 'unit', 'remaining']);
+  const [selectedCols, setSelectedCols] = useState<string[]>(['name', 'baseUnit', 'unit', 'remaining']);
 
   useEffect(() => {
     // 每次进入页面刷新一次最大日期
@@ -46,7 +46,6 @@ const ReportsView: React.FC = () => {
 
     setLoading(true);
     try {
-      // 这里的 db.getMaterials() 默认返回未删除的物料
       const [materials, inventory] = await Promise.all([
         db.getMaterials(),
         db.getInventoryForDate(date)
@@ -57,12 +56,9 @@ const ReportsView: React.FC = () => {
         return;
       }
 
-      // 将库存数据与物料信息关联，生成导出数据
-      // 注意：后端API已自动过滤掉已删除物料的库存记录
       const exportData = inventory
         .map(item => {
           const mat = materials.find(m => m.id === item.materialId);
-          // 防御性检查：如果物料不存在，跳过
           if (!mat) return null;
 
           const row: any = {};
@@ -70,6 +66,7 @@ const ReportsView: React.FC = () => {
             if (selectedCols.includes(col.id)) {
               switch (col.id) {
                 case 'name': row[col.key] = mat.name; break;
+                case 'baseUnit': row[col.key] = mat.baseUnit; break;
                 case 'unit': row[col.key] = mat.unit; break;
                 case 'opening': row[col.key] = item.openingStock; break;
                 case 'inbound': row[col.key] = item.todayInbound; break;
@@ -82,10 +79,10 @@ const ReportsView: React.FC = () => {
           });
           return row;
         })
-        .filter(row => row !== null); // 移除 null 记录（防御性编程）
+        .filter(row => row !== null);
 
       if (exportData.length === 0) {
-        alert(`${date} 选定日期的有效物料数据为空（可能所有记录的物料都已被删除）。`);
+        alert(`${date} 选定日期的有效物料数据为空。`);
         return;
       }
 
