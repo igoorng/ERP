@@ -151,10 +151,23 @@ export const onRequest: any = async (context: any) => {
       if (!date) return json({ error: 'Missing date' }, 400);
       
       const { results } = await env.DB.prepare(`
-        SELECT id, material_id AS materialId, date, opening_stock AS openingStock, today_inbound AS todayInbound, 
-               workshop_outbound AS workshopOutbound, store_outbound AS storeOutbound, remaining_stock AS remainingStock 
-        FROM "inventory" WHERE date = ?
-      `).bind(date).all();
+      //  SELECT id, material_id AS materialId, date, opening_stock AS openingStock, today_inbound AS todayInbound, 
+      //         workshop_outbound AS workshopOutbound, store_outbound AS storeOutbound, remaining_stock AS remainingStock 
+      //  FROM "inventory" WHERE date = ?
+      // `).bind(date).all();
+
+      SELECT 
+      i.id, i.material_id AS materialId, i.date, 
+      i.opening_stock AS openingStock, i.today_inbound AS todayInbound, 
+      i.workshop_outbound AS workshopOutbound, i.store_outbound AS storeOutbound, 
+      i.remaining_stock AS remainingStock,
+      m.name, m.unit, m.base_unit AS baseUnit
+      FROM "inventory" i
+      JOIN "materials" m ON i.material_id = m.id
+      WHERE i.date = ?
+      AND m.deleted_at IS NULL
+    GROUP BY i.material_id
+    `).bind(date).all();
       return json(results || []);
     }
 
@@ -172,11 +185,37 @@ export const onRequest: any = async (context: any) => {
         params.push(`%${search}%`);
       }
 
-      const total = await env.DB.prepare(`SELECT COUNT(*) as count FROM "inventory" i JOIN "materials" m ON i.material_id = m.id ${where}`).bind(...params).first('count');
+      // const total = await env.DB.prepare(`SELECT COUNT(*) as count FROM "inventory" i JOIN "materials" m ON i.material_id = m.id ${where}`).bind(...params).first('count');
+      // const { results } = await env.DB.prepare(`
+      //  SELECT i.id, i.material_id AS materialId, i.date, i.opening_stock AS openingStock, i.today_inbound AS todayInbound, i.workshop_outbound AS workshopOutbound, i.store_outbound AS storeOutbound, i.remaining_stock AS remainingStock 
+      //  FROM "inventory" i JOIN "materials" m ON i.material_id = m.id ${where} ORDER BY m.name LIMIT ? OFFSET ?
+      //`).bind(...params, pageSize, offset).all();
+
+      // 先查总条数（去重后）
+      const total = await env.DB.prepare(`
+        SELECT COUNT(DISTINCT i.material_id) as count 
+        FROM "inventory" i 
+        JOIN "materials" m ON i.material_id = m.id 
+        ${where}
+        `).bind(...params).first('count');
+
+  // 主查询：使用子查询取最新记录（如果当天有多条，只取一条）
       const { results } = await env.DB.prepare(`
-        SELECT i.id, i.material_id AS materialId, i.date, i.opening_stock AS openingStock, i.today_inbound AS todayInbound, i.workshop_outbound AS workshopOutbound, i.store_outbound AS storeOutbound, i.remaining_stock AS remainingStock 
-        FROM "inventory" i JOIN "materials" m ON i.material_id = m.id ${where} ORDER BY m.name LIMIT ? OFFSET ?
-      `).bind(...params, pageSize, offset).all();
+        SELECT 
+          i.id, i.material_id AS materialId, i.date, 
+          i.opening_stock AS openingStock, i.today_inbound AS todayInbound, 
+          i.workshop_outbound AS workshopOutbound, i.store_outbound AS storeOutbound, 
+          i.remaining_stock AS remainingStock,
+          m.name, m.unit, m.base_unit AS baseUnit
+          FROM "inventory" i
+          JOIN "materials" m ON i.material_id = m.id
+          WHERE i.date = ?
+          AND m.deleted_at IS NULL
+          AND (search ? m.name LIKE ? : 1)
+          GROUP BY i.material_id
+          ORDER BY m.name
+          LIMIT ? OFFSET ?
+       `).bind(date, ...(search ? [`%${search}%`] : []), pageSize, offset).all();
       
       return json({ inventory: results || [], total: total || 0, hasMore: offset + (results?.length || 0) < (total || 0) });
     }
