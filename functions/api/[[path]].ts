@@ -56,14 +56,10 @@ export const onRequest: any = async (context: any) => {
         await env.DB.prepare(sql).run();
       }
       
-      // 动态列检查：如果 base_unit 不存在则添加
       try {
         await env.DB.prepare(`ALTER TABLE "materials" ADD COLUMN "base_unit" TEXT`).run();
-      } catch (e) {
-        // 忽略列已存在的错误
-      }
+      } catch (e) {}
 
-      // 插入默认数据
       await env.DB.prepare(`INSERT OR IGNORE INTO "users" ("id", "username", "password_hash", "role") VALUES (?, ?, ?, ?)`).bind('admin-id', 'admin', 'admin', 'admin').run();
       await env.DB.prepare(`INSERT OR IGNORE INTO "settings" ("key", "value") VALUES (?, ?)`).bind('LOW_STOCK_THRESHOLD', '10').run();
       await env.DB.prepare(`INSERT OR IGNORE INTO "settings" ("key", "value") VALUES (?, ?)`).bind('SYSTEM_NAME', '物料管理系统 Pro').run();
@@ -123,7 +119,6 @@ export const onRequest: any = async (context: any) => {
       try {
         await env.DB.prepare(`INSERT INTO "materials" (id, name, unit, base_unit, created_at) VALUES (?, ?, ?, ?, ?)`).bind(id, name, unit, baseUnit || unit, timestamp).run();
       } catch (e: any) {
-        // 容错处理：如果是因为缺少 base_unit 列导致的失败，尝试在线添加列并重试一次
         if (e.message.includes('base_unit') || e.message.includes('has no column')) {
           try {
             await env.DB.prepare(`ALTER TABLE "materials" ADD COLUMN "base_unit" TEXT`).run();
@@ -140,11 +135,19 @@ export const onRequest: any = async (context: any) => {
       return json({ id });
     }
 
+    // 修复：批量删除使用 DB.batch 保证性能和原子性
     if (path === '/materials/batch-delete' && method === 'POST') {
       const { ids, timestamp } = await request.json() as any;
-      for (const id of ids) {
-        await env.DB.prepare(`UPDATE "materials" SET deleted_at = ? WHERE id = ?`).bind(timestamp, id).run();
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return json({ error: 'Invalid IDs' }, 400);
       }
+      
+      const statements = ids.map(id => 
+        env.DB.prepare(`UPDATE "materials" SET deleted_at = ? WHERE id = ?`).bind(timestamp, id)
+      );
+      
+      await env.DB.batch(statements);
+      
       if (cache) {
         await cache.deletePattern('mf:materials:');
         await cache.deletePattern('mf:inventory:');
@@ -204,7 +207,6 @@ export const onRequest: any = async (context: any) => {
       return json({ success: true });
     }
 
-    // --- Settings & Stats ---
     if (path === '/settings' && method === 'GET') {
       const { results } = await env.DB.prepare('SELECT * FROM "settings"').all();
       return json(results.reduce((acc: any, curr: any) => ({ ...acc, [curr.key]: curr.value }), {}));

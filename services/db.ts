@@ -297,11 +297,18 @@ export const db = {
 
   deleteMaterials: async (ids: string[], date: string): Promise<void> => {
     const ts = Date.now();
-    await fetch(`${API_BASE}/materials/batch-delete`, {
+    const response = await fetch(`${API_BASE}/materials/batch-delete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids, timestamp: ts })
     });
+    
+    // 修复：显式检查响应状态
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || '批量删除操作失败');
+    }
+
     await db.logAction('DELETE', `删除物料: ${ids.length}项`);
     db.clearCache();
   },

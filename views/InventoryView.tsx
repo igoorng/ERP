@@ -292,7 +292,7 @@ const InventoryView: React.FC = () => {
                   </th>
                   <th className="px-4 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">物料名称</th>
                   <th className="px-4 py-5 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">计量单位</th>
-                  <th className="px-4 py-5 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">物料单位</th>
+                  <th className="px-4 py-5 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">单位描述</th>
                   <th className="px-6 py-5 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">昨日库存</th>
                   <th className="px-6 py-5 text-center text-[10px] font-black text-blue-600 uppercase tracking-widest">今日入库</th>
                   <th className="px-6 py-5 text-center text-[10px] font-black text-orange-600 uppercase tracking-widest">车间出库</th>
