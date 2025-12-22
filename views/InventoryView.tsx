@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from '../services/db';
 import { Material, DailyInventory } from '../types';
-import { Plus, Search, Trash2, X, Calendar as CalendarIcon, Loader2, FileUp, ArrowRight, CheckSquare, Square, AlertCircle } from 'lucide-react';
+import { Plus, Search, Trash2, X, Calendar as CalendarIcon, Loader2, FileUp, CheckSquare, Square, AlertCircle, RefreshCw } from 'lucide-react';
 
 declare const XLSX: any;
 
@@ -24,6 +24,12 @@ const InventoryView: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const isToday = useMemo(() => date === today, [date, today]);
+
+  // 计算当前页是否全选
+  const isAllSelected = useMemo(() => {
+    if (inventory.length === 0) return false;
+    return inventory.every(item => selectedIds.includes(item.materialId));
+  }, [inventory, selectedIds]);
 
   const loadData = async (forceRefresh: boolean = false, page: number = 1, search: string = '') => {
     setLoading(true);
@@ -132,7 +138,6 @@ const InventoryView: React.FC = () => {
         setLoading(true);
         let count = 0;
         for (const row of (data as any[])) {
-          // 精确匹配用户要求的表头
           const name = row['物料名称'];
           const baseUnit = row['计量单位'];
           const unit = row['物料单位'];
@@ -159,6 +164,18 @@ const InventoryView: React.FC = () => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   };
 
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      // 如果已全选，则移除当前页的所有 ID
+      const pageIds = inventory.map(i => i.materialId);
+      setSelectedIds(prev => prev.filter(id => !pageIds.includes(id)));
+    } else {
+      // 否则增加当前页的所有 ID
+      const pageIds = inventory.map(i => i.materialId);
+      setSelectedIds(prev => Array.from(new Set([...prev, ...pageIds])));
+    }
+  };
+
   return (
     <div className="space-y-4 pb-20">
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col lg:flex-row gap-3 items-center">
@@ -167,51 +184,86 @@ const InventoryView: React.FC = () => {
           <input
             type="text"
             placeholder="搜索物料..."
-            className="w-full pl-12 pr-4 py-3 bg-gray-50 rounded-xl font-bold outline-none"
+            className="w-full pl-12 pr-4 py-3 bg-gray-50 rounded-xl font-bold outline-none border-2 border-transparent focus:border-blue-500 transition-all"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
         
         <div className="flex items-center gap-2 w-full lg:w-auto">
-          <input
-            type="date"
-            max={today}
-            className="flex-1 lg:w-40 px-4 py-3 border-none rounded-xl font-black bg-blue-50 text-blue-700"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
+          <div className="flex items-center bg-blue-50 px-3 py-1 rounded-xl border border-blue-100">
+             <CalendarIcon size={14} className="text-blue-500 mr-2" />
+             <input
+              type="date"
+              max={today}
+              className="bg-transparent border-none py-2 font-black text-blue-700 outline-none text-sm"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </div>
+
           {isToday && selectedIds.length > 0 && (
-            <button onClick={handleBatchDelete} className="p-3 bg-red-50 text-red-600 rounded-xl font-bold"><Trash2 size={20}/></button>
+            <button 
+              onClick={handleBatchDelete} 
+              className="flex items-center space-x-2 px-4 py-3 bg-red-600 text-white rounded-xl font-black shadow-lg shadow-red-200 animate-in slide-in-from-right-4"
+            >
+              <Trash2 size={18}/>
+              <span>删除 ({selectedIds.length})</span>
+            </button>
           )}
-          <button onClick={() => setIsAddModalOpen(true)} disabled={!isToday} className="p-3 bg-blue-600 text-white rounded-xl shadow-lg disabled:opacity-30"><Plus size={20}/></button>
-          <label className={`p-3 bg-indigo-50 text-indigo-700 rounded-xl cursor-pointer ${!isToday ? 'opacity-30' : ''}`}>
-            <FileUp size={20} />
+          
+          <button 
+            onClick={() => setIsAddModalOpen(true)} 
+            disabled={!isToday} 
+            className="p-3 bg-blue-600 text-white rounded-xl shadow-lg hover:bg-blue-700 active:scale-95 disabled:opacity-30 transition-all"
+            title="新增物料"
+          >
+            <Plus size={22}/>
+          </button>
+
+          <label className={`p-3 bg-indigo-50 text-indigo-700 rounded-xl cursor-pointer hover:bg-indigo-100 active:scale-95 transition-all ${!isToday ? 'opacity-30' : ''}`} title="批量导入 Excel">
+            <FileUp size={22} />
             <input ref={fileInputRef} type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={!isToday} />
           </label>
+
+          <button onClick={() => loadData(true)} className="p-3 bg-gray-50 text-gray-400 rounded-xl hover:text-blue-600 transition-colors" title="刷新数据">
+            <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
+          </button>
         </div>
       </div>
 
-      {loading ? (
+      {loading && inventory.length === 0 ? (
         <div className="py-20 flex flex-col items-center justify-center text-gray-400">
           <Loader2 className="animate-spin mb-4 text-blue-500" size={48} />
-          <p className="font-black text-sm uppercase">数据加载中...</p>
+          <p className="font-black text-sm uppercase tracking-widest">数据同步中...</p>
         </div>
       ) : (
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left">
-              <thead className="bg-gray-50 border-b border-gray-100">
+              <thead className="bg-gray-50/50 border-b border-gray-100">
                 <tr>
-                  <th className="px-6 py-5 w-12 text-center">选择</th>
-                  <th className="px-4 py-5 font-black text-gray-400 text-[10px] uppercase">物料名称</th>
-                  <th className="px-4 py-5 font-black text-gray-400 text-[10px] uppercase">计量单位</th>
-                  <th className="px-4 py-5 font-black text-gray-400 text-[10px] uppercase">物料单位</th>
-                  <th className="px-4 py-5 text-center font-black text-gray-400 text-[10px] uppercase">昨日库存</th>
-                  <th className="px-4 py-5 text-center font-black text-blue-600 text-[10px] uppercase">今日入库</th>
-                  <th className="px-4 py-5 text-center font-black text-orange-600 text-[10px] uppercase">车间出库</th>
-                  <th className="px-4 py-5 text-center font-black text-purple-600 text-[10px] uppercase">店面出库</th>
-                  <th className="px-4 py-5 text-center font-black text-gray-900 text-[10px] uppercase">实时库存</th>
+                  <th className="px-6 py-5 w-16 text-center">
+                    <button 
+                      onClick={toggleSelectAll} 
+                      disabled={!isToday || inventory.length === 0}
+                      className="transition-transform active:scale-90"
+                    >
+                      {isAllSelected ? (
+                        <CheckSquare className="text-blue-600" size={22} />
+                      ) : (
+                        <Square className="text-gray-300" size={22} />
+                      )}
+                    </button>
+                  </th>
+                  <th className="px-4 py-5 font-black text-gray-400 text-[10px] uppercase tracking-widest">物料名称</th>
+                  <th className="px-4 py-5 font-black text-gray-400 text-[10px] uppercase tracking-widest">计量单位</th>
+                  <th className="px-4 py-5 font-black text-gray-400 text-[10px] uppercase tracking-widest">物料单位</th>
+                  <th className="px-4 py-5 text-center font-black text-gray-400 text-[10px] uppercase tracking-widest">昨日库存</th>
+                  <th className="px-4 py-5 text-center font-black text-blue-600 text-[10px] uppercase tracking-widest">今日入库</th>
+                  <th className="px-4 py-5 text-center font-black text-orange-600 text-[10px] uppercase tracking-widest">车间出库</th>
+                  <th className="px-4 py-5 text-center font-black text-purple-600 text-[10px] uppercase tracking-widest">店面出库</th>
+                  <th className="px-4 py-5 text-center font-black text-gray-900 text-[10px] uppercase tracking-widest">实时库存</th>
                   <th className="px-4 py-5"></th>
                 </tr>
               </thead>
@@ -220,28 +272,72 @@ const InventoryView: React.FC = () => {
                   const mat = materials.find(m => m.id === item.materialId);
                   const isSelected = selectedIds.includes(item.materialId);
                   return (
-                    <tr key={item.id} className={isSelected ? 'bg-blue-50/30' : ''}>
+                    <tr 
+                      key={item.id} 
+                      className={`
+                        transition-all hover:bg-gray-50/80
+                        ${isSelected ? 'bg-blue-50/40' : ''}
+                      `}
+                    >
                       <td className="px-6 py-5 text-center">
                         <button onClick={() => toggleSelect(item.materialId)} disabled={!isToday}>
-                          {isSelected ? <CheckSquare className="text-blue-600" /> : <Square className="text-gray-300" />}
+                          {isSelected ? (
+                            <CheckSquare className="text-blue-600" size={20} />
+                          ) : (
+                            <Square className="text-gray-300 hover:text-gray-400" size={20} />
+                          )}
                         </button>
                       </td>
                       <td className="px-4 py-5 font-black text-gray-900">{mat?.name}</td>
-                      <td className="px-4 py-5 font-bold text-indigo-500">{mat?.baseUnit}</td>
+                      <td className="px-4 py-5">
+                         <span className="px-2 py-1 bg-indigo-50 text-indigo-600 text-[10px] font-black rounded-lg">
+                           {mat?.baseUnit}
+                         </span>
+                      </td>
                       <td className="px-4 py-5 font-bold text-gray-500">{mat?.unit}</td>
                       <td className="px-4 py-5 text-center font-mono font-bold text-gray-400">{item.openingStock}</td>
                       <td className="px-4 py-5">
-                        <input type="number" disabled={!isToday} value={item.todayInbound || ''} onChange={(e) => handleInputChange(item.materialId, 'todayInbound', e.target.value)} className="w-full p-2 bg-blue-50/50 rounded-lg text-center font-bold" />
+                        <input 
+                          type="number" 
+                          disabled={!isToday} 
+                          value={item.todayInbound || ''} 
+                          onChange={(e) => handleInputChange(item.materialId, 'todayInbound', e.target.value)} 
+                          className="w-full p-2 bg-blue-50/50 rounded-lg text-center font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
+                          placeholder="0"
+                        />
                       </td>
                       <td className="px-4 py-5">
-                        <input type="number" disabled={!isToday} value={item.workshopOutbound || ''} onChange={(e) => handleInputChange(item.materialId, 'workshopOutbound', e.target.value)} className="w-full p-2 bg-orange-50/50 rounded-lg text-center font-bold" />
+                        <input 
+                          type="number" 
+                          disabled={!isToday} 
+                          value={item.workshopOutbound || ''} 
+                          onChange={(e) => handleInputChange(item.materialId, 'workshopOutbound', e.target.value)} 
+                          className="w-full p-2 bg-orange-50/50 rounded-lg text-center font-bold focus:ring-2 focus:ring-orange-500 outline-none transition-all" 
+                          placeholder="0"
+                        />
                       </td>
                       <td className="px-4 py-5">
-                        <input type="number" disabled={!isToday} value={item.storeOutbound || ''} onChange={(e) => handleInputChange(item.materialId, 'storeOutbound', e.target.value)} className="w-full p-2 bg-purple-50/50 rounded-lg text-center font-bold" />
+                        <input 
+                          type="number" 
+                          disabled={!isToday} 
+                          value={item.storeOutbound || ''} 
+                          onChange={(e) => handleInputChange(item.materialId, 'storeOutbound', e.target.value)} 
+                          className="w-full p-2 bg-purple-50/50 rounded-lg text-center font-bold focus:ring-2 focus:ring-purple-500 outline-none transition-all" 
+                          placeholder="0"
+                        />
                       </td>
-                      <td className="px-4 py-5 text-center font-black text-blue-900 text-xl">{item.remainingStock}</td>
+                      <td className={`px-4 py-5 text-center font-black text-xl tracking-tighter ${item.remainingStock < 10 ? 'text-red-600 animate-pulse' : 'text-blue-900'}`}>
+                        {item.remainingStock}
+                      </td>
                       <td className="px-4 py-5">
-                        {isToday && <button onClick={() => handleDeleteMaterial(item.materialId, mat?.name || '')} className="text-gray-300 hover:text-red-500"><Trash2 size={18}/></button>}
+                        {isToday && (
+                          <button 
+                            onClick={() => handleDeleteMaterial(item.materialId, mat?.name || '')} 
+                            className="text-gray-300 hover:text-red-500 transition-colors p-2"
+                          >
+                            <Trash2 size={18}/>
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -249,22 +345,51 @@ const InventoryView: React.FC = () => {
               </tbody>
             </table>
           </div>
+          {inventory.length === 0 && !loading && (
+            <div className="py-20 text-center flex flex-col items-center">
+              <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+                <AlertCircle className="text-gray-200" size={40} />
+              </div>
+              <p className="text-gray-400 font-bold uppercase tracking-widest text-sm">暂无匹配的物料记录</p>
+            </div>
+          )}
         </div>
       )}
 
       {isAddModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95">
-            <div className="p-6 bg-blue-600 text-white flex items-center justify-between">
-              <h3 className="font-black">新增物料</h3>
-              <button onClick={() => setIsAddModalOpen(false)}><X size={20}/></button>
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+            <div className="p-8 bg-blue-600 text-white flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-black tracking-tight">新增物料</h3>
+                <p className="text-xs text-blue-100 font-medium opacity-80 uppercase tracking-widest mt-1">Register New Item</p>
+              </div>
+              <button onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
+                <X size={24}/>
+              </button>
             </div>
-            <form onSubmit={handleAddSubmit} className="p-8 space-y-4">
-              <input required value={newMat.name} onChange={e => setNewMat({...newMat, name: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-bold outline-none" placeholder="物料名称" />
-              <input required value={newMat.baseUnit} onChange={e => setNewMat({...newMat, baseUnit: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-bold outline-none" placeholder="计量单位 (如: 斤, 公斤)" />
-              <input required value={newMat.unit} onChange={e => setNewMat({...newMat, unit: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-bold outline-none" placeholder="物料单位 (如: 袋, 箱)" />
-              <input type="number" value={newMat.initialStock} onChange={e => setNewMat({...newMat, initialStock: parseFloat(e.target.value) || 0})} className="w-full p-4 bg-gray-50 rounded-2xl font-bold outline-none" placeholder="昨日库存" />
-              <button type="submit" className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl shadow-xl">保存物料</button>
+            <form onSubmit={handleAddSubmit} className="p-8 space-y-5">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">物料核心名称</label>
+                <input required value={newMat.name} onChange={e => setNewMat({...newMat, name: e.target.value})} className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none transition-all" placeholder="如：特级面粉" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">计量单位</label>
+                  <input required value={newMat.baseUnit} onChange={e => setNewMat({...newMat, baseUnit: e.target.value})} className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none transition-all" placeholder="斤 / KG" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">物料单位</label>
+                  <input required value={newMat.unit} onChange={e => setNewMat({...newMat, unit: e.target.value})} className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none transition-all" placeholder="袋 / 箱" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">初始库存 (昨日结余)</label>
+                <input type="number" value={newMat.initialStock} onChange={e => setNewMat({...newMat, initialStock: parseFloat(e.target.value) || 0})} className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none transition-all" placeholder="0" />
+              </div>
+              <button type="submit" className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl shadow-xl shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all mt-4">
+                确认录入系统
+              </button>
             </form>
           </div>
         </div>
