@@ -14,21 +14,18 @@ const InventoryView: React.FC = () => {
   const [inventory, setInventory] = useState<DailyInventory[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // 分页状态
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(20); // 每页显示20条
+  const [pageSize] = useState(20);
   const [totalItems, setTotalItems] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   
-  // 批量选择状态
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newMat, setNewMat] = useState({ name: '', unit: '', initialStock: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // 预加载下一页的引用
-  const preloadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Fix: Use ReturnType<typeof setTimeout> instead of NodeJS.Timeout to avoid errors in strictly browser-based environments
+  const preloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isToday = useMemo(() => date === today, [date, today]);
 
@@ -37,43 +34,29 @@ const InventoryView: React.FC = () => {
     try {
       await db.initializeDate(date);
       
-      // 使用分页接口
       const [matsData, invData] = await Promise.all([
         db.getMaterialsPaginated(page, pageSize, date, search, forceRefresh),
         db.getInventoryForDatePaginated(date, page, pageSize, search, forceRefresh)
       ]);
       
-      // 收集库存数据中所有物料ID
       const inventoryMaterialIds = new Set(invData.inventory.map(item => item.materialId));
       const currentMaterialIds = new Set(matsData.materials.map(m => m.id));
-      
-      // 检查是否有缺失的物料
       const missingIds = Array.from(inventoryMaterialIds).filter(id => !currentMaterialIds.has(id));
       
       let allMaterials = matsData.materials;
-      
-      // 如果有缺失的物料，加载所有物料数据
       if (missingIds.length > 0) {
-        console.log(`Loading ${missingIds.length} missing materials:`, missingIds);
         const allMatsData = await db.getMaterialsPaginated(1, 1000, date, search, forceRefresh);
         allMaterials = allMatsData.materials;
       }
       
       setMaterials(allMaterials);
       setInventory(invData.inventory);
-      setTotalItems(invData.total); // 使用库存总数而不是物料总数
+      setTotalItems(invData.total);
       setHasMore(invData.hasMore);
       setCurrentPage(page);
       
-      // 清空选择（如果是新页面或搜索）
-      if (page === 1 || search !== searchTerm) {
-        setSelectedIds([]);
-      }
-      
-      // 预加载下一页（如果还有更多数据）
-      if (matsData.hasMore && !forceRefresh) {
-        preloadNextPage(page + 1, search);
-      }
+      if (page === 1 || search !== searchTerm) setSelectedIds([]);
+      if (matsData.hasMore && !forceRefresh) preloadNextPage(page + 1, search);
     } catch (error) {
       console.error("Failed to load data:", error);
     } finally {
@@ -81,55 +64,30 @@ const InventoryView: React.FC = () => {
     }
   };
 
-  // 预加载下一页数据
   const preloadNextPage = async (nextPage: number, search: string) => {
-    // 清除之前的预加载定时器
-    if (preloadTimeoutRef.current) {
-      clearTimeout(preloadTimeoutRef.current);
-    }
-    
-    // 延迟2秒后预加载，避免频繁请求
+    if (preloadTimeoutRef.current) clearTimeout(preloadTimeoutRef.current);
     preloadTimeoutRef.current = setTimeout(async () => {
       try {
         await Promise.all([
           db.getMaterialsPaginated(nextPage, pageSize, date, search, false),
           db.getInventoryForDatePaginated(date, nextPage, pageSize, search, false)
         ]);
-        console.log(`预加载第${nextPage}页数据完成`);
-      } catch (error) {
-        console.log("预加载失败:", error);
-      }
+      } catch (error) {}
     }, 2000);
   };
 
   useEffect(() => {
-    setCurrentPage(1); // 切换日期时重置到第一页
+    setCurrentPage(1);
     loadData(false, 1, searchTerm);
   }, [date]);
 
-  // 搜索防抖
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      setCurrentPage(1); // 搜索时重置到第一页
+      setCurrentPage(1);
       loadData(false, 1, searchTerm);
-    }, 300); // 300ms防抖
-
+    }, 300);
     return () => clearTimeout(timeoutId);
   }, [searchTerm]);
-
-  // 清理预加载定时器
-  useEffect(() => {
-    return () => {
-      if (preloadTimeoutRef.current) {
-        clearTimeout(preloadTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  // 移除客户端过滤，因为现在在服务器端过滤
-  const filteredData = useMemo(() => {
-    return inventory;
-  }, [inventory]);
 
   const handleInputChange = async (materialId: string, field: keyof DailyInventory, value: string) => {
     if (!isToday) return;
@@ -146,9 +104,7 @@ const InventoryView: React.FC = () => {
     setInventory(updatedInventory);
 
     const target = updatedInventory.find(i => i.materialId === materialId);
-    if (target) {
-      await db.saveInventoryRecord(target);
-    }
+    if (target) await db.saveInventoryRecord(target);
   };
 
   const handleAddSubmit = async (e: React.FormEvent) => {
@@ -193,10 +149,10 @@ const InventoryView: React.FC = () => {
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.length === filteredData.length) {
+    if (selectedIds.length === inventory.length) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(filteredData.map(item => item.materialId));
+      setSelectedIds(inventory.map(item => item.materialId));
     }
   };
 
@@ -210,7 +166,6 @@ const InventoryView: React.FC = () => {
     if (!isToday) return;
     const file = e.target.files?.[0];
     if (!file) return;
-    
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
@@ -218,12 +173,11 @@ const InventoryView: React.FC = () => {
         const wb = XLSX.read(bstr, { type: 'binary' });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const data = XLSX.utils.sheet_to_json(ws);
-        
         setLoading(true);
         for (const row of (data as any[])) {
           const name = row['物料名称'] || row['名称'];
           const unit = row['物料单位'] || row['单位'];
-          const stock = Number(row['昨日库存'] || row['昨日库存'] || 0);
+          const stock = Number(row['昨日库存'] || row['期初库存'] || 0);
           if (name && unit) await db.addMaterial(String(name), String(unit), stock, date);
         }
         await loadData(true);
@@ -239,21 +193,20 @@ const InventoryView: React.FC = () => {
 
   return (
     <div className="space-y-4 animate-in fade-in duration-500 pb-24 lg:pb-0">
-      {/* 顶部工具栏 */}
       <div className="bg-white p-4 rounded-2xl lg:rounded-3xl shadow-sm border border-gray-100 flex flex-col lg:flex-row gap-3 items-center">
         <div className="relative flex-1 w-full">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input
             type="text"
-            placeholder="搜物料..."
+            placeholder="搜索物料名称或单位..."
             className="w-full pl-12 pr-4 py-3 bg-gray-50 border-none rounded-xl lg:rounded-2xl focus:ring-2 focus:ring-blue-500 font-bold outline-none"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
         
-        <div className="flex items-center justify-between w-full lg:w-auto lg:justify-start">
-          <div className="relative flex-1 lg:flex-none lg:mr-2">
+        <div className="flex items-center justify-between w-full lg:w-auto lg:justify-start gap-2">
+          <div className="relative flex-1 lg:flex-none">
             <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-500" size={14} />
             <input
               type="date"
@@ -264,27 +217,26 @@ const InventoryView: React.FC = () => {
             />
           </div>
 
-          <div className="flex items-center space-x-2 ml-5">
-            {/* 批量删除按钮 - 仅在有选中项且为今天时显示 */}
+          <div className="flex items-center space-x-2">
             {isToday && selectedIds.length > 0 && (
               <button
                 onClick={handleBatchDelete}
-                className="flex items-center space-x-2 px-4 py-3 bg-red-50 text-red-600 rounded-xl font-bold hover:bg-red-100 transition-colors animate-in zoom-in-95 duration-200"
+                className="flex items-center space-x-2 px-4 py-3 bg-red-50 text-red-600 rounded-xl font-bold hover:bg-red-100 transition-colors animate-in zoom-in-95"
               >
                 <Trash2 size={18} />
-                <span className="hidden sm:inline">删除所选 ({selectedIds.length})</span>
+                <span className="hidden sm:inline">删除({selectedIds.length})</span>
               </button>
             )}
 
             <button
               onClick={() => setIsAddModalOpen(true)}
               disabled={!isToday}
-              className="p-3 bg-blue-600 text-white rounded-xl shadow-lg disabled:opacity-30 hover:bg-blue-700 transition-colors"
+              className="p-3 bg-blue-600 text-white rounded-xl shadow-lg disabled:opacity-30 hover:bg-blue-700 transition-all active:scale-95"
+              title="新增物料"
             >
               <Plus size={20} />
             </button>
             
-            {/* Excel导入按钮 - 仅在桌面版显示 */}
             <label className={`hidden lg:flex p-3 bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-100 cursor-pointer hover:bg-indigo-100 transition-colors ${!isToday ? 'opacity-30 pointer-events-none' : ''}`}>
               <FileUp size={20} />
               <input ref={fileInputRef} type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={!isToday} />
@@ -295,85 +247,57 @@ const InventoryView: React.FC = () => {
 
       {loading ? (
         <div className="py-20 flex flex-col items-center justify-center text-gray-400">
-          <Loader2 className="animate-spin mb-4" size={48} />
-          <p className="font-black text-sm uppercase">
-            {currentPage > 1 ? `加载第 ${currentPage} 页...` : '同步中...'}
+          <Loader2 className="animate-spin mb-4 text-blue-500" size={48} />
+          <p className="font-black text-sm uppercase tracking-widest">
+            {currentPage > 1 ? `正在加载第 ${currentPage} 页...` : '数据同步中...'}
           </p>
-          {totalItems > 0 && (
-            <p className="text-xs mt-2 text-gray-400">
-              共 {totalItems} 条记录，每页显示 {pageSize} 条
-            </p>
-          )}
         </div>
       ) : (
         <div className="space-y-4">
-          {/* 桌面端表格显示 */}
           <div className="hidden lg:block bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
             <table className="w-full text-left">
-              <thead className="bg-gray-50/50 border-b border-gray-50">
+              <thead className="bg-gray-50/50 border-b border-gray-100">
                 <tr>
-                  <th className="px-6 py-5 w-12">
+                  <th className="px-6 py-5 w-12 text-center">
                     <button 
                       onClick={toggleSelectAll}
-                      disabled={!isToday || filteredData.length === 0}
+                      disabled={!isToday || inventory.length === 0}
                       className="text-gray-400 hover:text-blue-600 transition-colors disabled:opacity-30"
                     >
-                      {selectedIds.length === filteredData.length && filteredData.length > 0 ? (
+                      {selectedIds.length === inventory.length && inventory.length > 0 ? (
                         <CheckSquare size={20} className="text-blue-600" />
                       ) : (
                         <Square size={20} />
                       )}
                     </button>
                   </th>
-                  <th className="px-4 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">物料详情</th>
-                  <th className="px-6 py-5 text-center text-[10px] font-black text-gray-400">昨日库存</th>
-                  <th className="px-6 py-5 text-center text-[10px] font-black text-blue-600">今日入库</th>
-                  <th className="px-6 py-5 text-center text-[10px] font-black text-orange-600">车间出库</th>
-                  <th className="px-6 py-5 text-center text-[10px] font-black text-purple-600">店面出库</th>
-                  <th className="px-8 py-5 text-center text-[10px] font-black text-gray-900 bg-blue-50/30">库存剩余</th>
+                  <th className="px-4 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">物料名称</th>
+                  <th className="px-4 py-5 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">物料单位</th>
+                  <th className="px-6 py-5 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">昨日库存</th>
+                  <th className="px-6 py-5 text-center text-[10px] font-black text-blue-600 uppercase tracking-widest">今日入库</th>
+                  <th className="px-6 py-5 text-center text-[10px] font-black text-orange-600 uppercase tracking-widest">车间出库</th>
+                  <th className="px-6 py-5 text-center text-[10px] font-black text-purple-600 uppercase tracking-widest">店面出库</th>
+                  <th className="px-8 py-5 text-center text-[10px] font-black text-gray-900 bg-blue-50/50 uppercase tracking-widest border-l border-gray-100">实时库存</th>
                   <th className="px-6 py-5"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {filteredData.map(item => {
+                {inventory.map(item => {
                   const mat = materials.find(m => m.id === item.materialId);
                   const isSelected = selectedIds.includes(item.materialId);
-                  
-                  // 如果找不到对应的物料，先显示加载状态
-                  if (!mat) {
-                    console.warn(`Material not found for ID: ${item.materialId}, loading...`);
-                    // 延迟加载缺失的物料数据
-                    setTimeout(() => {
-                      db.getMaterialsPaginated(1, 1000, date, '', false).then(matsData => {
-                        setMaterials(prev => [...prev, ...matsData.materials]);
-                      });
-                    }, 100);
-                  }
-                  
                   return (
-                    <tr key={item.id} className={`hover:bg-gray-50/50 transition-colors ${isSelected ? 'bg-blue-50/30' : ''}`}>
-                      <td className="px-6 py-5">
+                    <tr key={item.id} className={`hover:bg-gray-50/50 transition-colors ${isSelected ? 'bg-blue-50/20' : ''}`}>
+                      <td className="px-6 py-5 text-center">
                         <button 
                           onClick={() => toggleSelect(item.materialId)}
                           disabled={!isToday}
-                          className="text-gray-300 hover:text-blue-600 transition-colors disabled:opacity-30"
+                          className="text-gray-300 hover:text-blue-600 transition-colors"
                         >
                           {isSelected ? <CheckSquare size={20} className="text-blue-600" /> : <Square size={20} />}
                         </button>
                       </td>
-                      <td className="px-4 py-5">
-                        {mat ? (
-                          <>
-                            <div className="font-black text-gray-900">{mat.name}</div>
-                            <div className="text-[10px] text-gray-400 uppercase">单位: {mat.unit}</div>
-                          </>
-                        ) : (
-                          <div className="text-gray-400">
-                            <div className="font-mono text-xs">物料ID: {item.materialId}</div>
-                            <div className="text-[10px] animate-pulse">加载中...</div>
-                          </div>
-                        )}
-                      </td>
+                      <td className="px-4 py-5 font-black text-gray-900">{mat?.name || '加载中...'}</td>
+                      <td className="px-4 py-5 text-center font-bold text-gray-500">{mat?.unit || '-'}</td>
                       <td className="px-6 py-5 text-center font-mono font-black text-gray-400">{item.openingStock}</td>
                       <td className="px-6 py-5 text-center">
                         <input 
@@ -382,7 +306,7 @@ const InventoryView: React.FC = () => {
                           value={item.todayInbound || ''} 
                           placeholder="0"
                           onChange={(e) => handleInputChange(item.materialId, 'todayInbound', e.target.value)} 
-                          className="w-20 px-2 py-2 bg-blue-50/50 rounded-lg text-center font-bold" 
+                          className="w-20 px-2 py-2 bg-blue-50/50 rounded-lg text-center font-bold focus:ring-2 focus:ring-blue-500 outline-none" 
                         />
                       </td>
                       <td className="px-6 py-5 text-center">
@@ -392,7 +316,7 @@ const InventoryView: React.FC = () => {
                           value={item.workshopOutbound || ''} 
                           placeholder="0"
                           onChange={(e) => handleInputChange(item.materialId, 'workshopOutbound', e.target.value)} 
-                          className="w-20 px-2 py-2 bg-orange-50/50 rounded-lg text-center font-bold" 
+                          className="w-20 px-2 py-2 bg-orange-50/50 rounded-lg text-center font-bold focus:ring-2 focus:ring-orange-500 outline-none" 
                         />
                       </td>
                       <td className="px-6 py-5 text-center">
@@ -402,12 +326,18 @@ const InventoryView: React.FC = () => {
                           value={item.storeOutbound || ''} 
                           placeholder="0"
                           onChange={(e) => handleInputChange(item.materialId, 'storeOutbound', e.target.value)} 
-                          className="w-20 px-2 py-2 bg-purple-50/50 rounded-lg text-center font-bold" 
+                          className="w-20 px-2 py-2 bg-purple-50/50 rounded-lg text-center font-bold focus:ring-2 focus:ring-purple-500 outline-none" 
                         />
                       </td>
-                      <td className="px-8 py-5 text-center font-black text-blue-900 bg-blue-50/20 text-xl">{item.remainingStock}</td>
-                      <td className="px-6 py-5">
-                        {isToday && <button onClick={() => handleDeleteMaterial(item.materialId, mat?.name || '')} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>}
+                      <td className="px-8 py-5 text-center font-black text-blue-900 bg-blue-50/30 text-2xl border-l border-gray-100">
+                        {item.remainingStock}
+                      </td>
+                      <td className="px-6 py-5 text-center">
+                        {isToday && (
+                          <button onClick={() => handleDeleteMaterial(item.materialId, mat?.name || '')} className="text-gray-300 hover:text-red-500 transition-colors">
+                            <Trash2 size={18}/>
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -416,222 +346,74 @@ const InventoryView: React.FC = () => {
             </table>
           </div>
 
-          {/* 分页控件 - 桌面端 */}
-          {totalItems > pageSize && (
-            <div className="hidden lg:flex items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-              <div className="text-sm text-gray-500">
-                显示第 {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, totalItems)} 条，共 {totalItems} 条记录
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => loadData(false, currentPage - 1, searchTerm)}
-                  disabled={currentPage === 1}
-                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-200 transition-colors"
-                >
-                  上一页
-                </button>
-                <div className="flex items-center space-x-1">
-                  {Array.from({ length: Math.min(7, Math.ceil(totalItems / pageSize)) }, (_, i) => {
-                    const pageNum = i + 1;
-                    const isActive = pageNum === currentPage;
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => loadData(false, pageNum, searchTerm)}
-                        className={`w-10 h-10 rounded-lg font-medium transition-colors ${
-                          isActive
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
-                  {Math.ceil(totalItems / pageSize) > 7 && (
-                    <>
-                      <span className="text-gray-400">...</span>
-                      <button
-                        onClick={() => loadData(false, Math.ceil(totalItems / pageSize), searchTerm)}
-                        className="w-10 h-10 rounded-lg font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
-                      >
-                        {Math.ceil(totalItems / pageSize)}
-                      </button>
-                    </>
-                  )}
-                </div>
-                <button
-                  onClick={() => loadData(false, currentPage + 1, searchTerm)}
-                  disabled={!hasMore}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors"
-                >
-                  下一页
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* 手机端卡片列表 */}
-          <div className="grid grid-cols-1 gap-4 lg:hidden">
-            {filteredData.length > 0 && isToday && (
-              <div className="flex items-center justify-between px-2">
-                <button 
-                  onClick={toggleSelectAll}
-                  className="flex items-center space-x-2 text-xs font-black text-gray-400 uppercase tracking-widest"
-                >
-                  {selectedIds.length === filteredData.length ? <CheckSquare size={16} className="text-blue-600" /> : <Square size={16} />}
-                  <span>全选本页 ({selectedIds.length}/{filteredData.length})</span>
-                </button>
-              </div>
-            )}
-            
-            {filteredData.map(item => {
+          {/* 手机端布局 */}
+          <div className="lg:hidden space-y-4">
+            {inventory.map(item => {
               const mat = materials.find(m => m.id === item.materialId);
               const isSelected = selectedIds.includes(item.materialId);
-              
-              // 如果找不到对应的物料，先显示加载状态
-              if (!mat) {
-                console.warn(`Material not found for ID: ${item.materialId}, loading...`);
-                // 延迟加载缺失的物料数据
-                setTimeout(() => {
-                  db.getMaterialsPaginated(1, 1000, date, '', false).then(matsData => {
-                    setMaterials(prev => [...prev, ...matsData.materials]);
-                  });
-                }, 100);
-              }
               return (
-                <div key={item.id} className={`bg-white p-5 rounded-2xl shadow-sm border transition-all space-y-4 ${isSelected ? 'border-blue-200 ring-1 ring-blue-100' : 'border-gray-100'}`}>
-                  <div className="flex justify-between items-start">
+                <div key={item.id} className={`bg-white p-5 rounded-[1.5rem] shadow-sm border border-gray-100 transition-all ${isSelected ? 'border-blue-500 ring-2 ring-blue-50' : ''}`}>
+                  <div className="flex justify-between items-start mb-4">
                     <div className="flex items-start space-x-3">
                       {isToday && (
-                        <button 
-                          onClick={() => toggleSelect(item.materialId)}
-                          className="mt-1 text-gray-300 hover:text-blue-600"
-                        >
+                        <button onClick={() => toggleSelect(item.materialId)} className="mt-1 text-gray-300 hover:text-blue-600">
                           {isSelected ? <CheckSquare size={20} className="text-blue-600" /> : <Square size={20} />}
                         </button>
                       )}
                       <div>
-                        {mat ? (
-                          <>
-                            <h4 className="font-black text-gray-900 leading-tight">{mat.name}</h4>
-                            <div className="flex items-center space-x-2 mt-1">
-                              <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">单位: {mat.unit}</span>
-                              <span className="text-[10px] font-black text-gray-400">昨日库存: {item.openingStock}</span>
-                            </div>
-                          </>
-                        ) : (
-                          <div className="text-gray-400">
-                            <div className="font-mono text-xs">物料ID: {item.materialId}</div>
-                            <div className="text-[10px] animate-pulse">加载中...</div>
-                            <div className="text-[10px] font-black text-gray-400">昨日库存: {item.openingStock}</div>
-                          </div>
-                        )}
+                        <h4 className="font-black text-gray-900 leading-tight">{mat?.name || '...'}</h4>
+                        <div className="flex items-center space-x-2 mt-1">
+                          <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">单位: {mat?.unit || '-'}</span>
+                          <span className="text-[10px] font-black text-gray-400">昨存: {item.openingStock}</span>
+                        </div>
                       </div>
                     </div>
                     {isToday && (
-                      <button onClick={() => handleDeleteMaterial(item.materialId, mat?.name || '')} className="p-2 text-red-200 hover:text-red-500 transition-colors">
+                      <button onClick={() => handleDeleteMaterial(item.materialId, mat?.name || '')} className="p-2 text-red-200 hover:text-red-500">
                         <Trash2 size={16} />
                       </button>
                     )}
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-3 gap-2 mb-4">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-black text-blue-400 uppercase block ml-1 text-center">今日入库</label>
-                      <input
-                        type="number"
-                        disabled={!isToday}
-                        value={item.todayInbound || ''}
-                        placeholder="0"
-                        onChange={(e) => handleInputChange(item.materialId, 'todayInbound', e.target.value)}
-                        className="w-full py-3 bg-blue-50/50 rounded-xl text-center font-black text-blue-700 border-none outline-none focus:ring-2 focus:ring-blue-500"
-                      />
+                      <label className="text-[9px] font-black text-blue-400 uppercase text-center block">入库</label>
+                      <input type="number" disabled={!isToday} value={item.todayInbound || ''} placeholder="0" onChange={(e) => handleInputChange(item.materialId, 'todayInbound', e.target.value)} className="w-full py-3 bg-blue-50/30 rounded-xl text-center font-black text-blue-700 outline-none" />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] font-black text-orange-400 uppercase block ml-1 text-center">车间出库</label>
-                      <input
-                        type="number"
-                        disabled={!isToday}
-                        value={item.workshopOutbound || ''}
-                        placeholder="0"
-                        onChange={(e) => handleInputChange(item.materialId, 'workshopOutbound', e.target.value)}
-                        className="w-full py-3 bg-orange-50/50 rounded-xl text-center font-black text-orange-700 border-none outline-none focus:ring-2 focus:ring-orange-500"
-                      />
+                      <label className="text-[9px] font-black text-orange-400 uppercase text-center block">车间</label>
+                      <input type="number" disabled={!isToday} value={item.workshopOutbound || ''} placeholder="0" onChange={(e) => handleInputChange(item.materialId, 'workshopOutbound', e.target.value)} className="w-full py-3 bg-orange-50/30 rounded-xl text-center font-black text-orange-700 outline-none" />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] font-black text-purple-400 uppercase block ml-1 text-center">店面出库</label>
-                      <input
-                        type="number"
-                        disabled={!isToday}
-                        value={item.storeOutbound || ''}
-                        placeholder="0"
-                        onChange={(e) => handleInputChange(item.materialId, 'storeOutbound', e.target.value)}
-                        className="w-full py-3 bg-purple-50/50 rounded-xl text-center font-black text-purple-700 border-none outline-none focus:ring-2 focus:ring-purple-500"
-                      />
+                      <label className="text-[9px] font-black text-purple-400 uppercase text-center block">店面</label>
+                      <input type="number" disabled={!isToday} value={item.storeOutbound || ''} placeholder="0" onChange={(e) => handleInputChange(item.materialId, 'storeOutbound', e.target.value)} className="w-full py-3 bg-purple-50/30 rounded-xl text-center font-black text-purple-700 outline-none" />
                     </div>
                   </div>
 
                   <div className="pt-3 border-t border-dashed border-gray-100 flex items-center justify-between">
-                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">实时计算剩余库存:</span>
-                    <div className="flex items-center space-x-2 ml-5">
-                      <ArrowRight size={14} className="text-gray-300" />
-                      <span className="text-2xl font-black text-blue-900 tracking-tighter">{item.remainingStock}</span>
-                    </div>
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">实时库存:</span>
+                    <span className="text-2xl font-black text-blue-900 tracking-tighter">{item.remainingStock}</span>
                   </div>
                 </div>
               );
             })}
           </div>
 
-          {/* 分页控件 - 移动端 */}
           {totalItems > pageSize && (
-            <div className="lg:hidden bg-white p-4 rounded-2xl shadow-sm border border-gray-100 space-y-4">
-              <div className="text-center text-sm text-gray-500">
-                显示第 {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, totalItems)} 条，共 {totalItems} 条
-              </div>
-              <div className="flex justify-center space-x-2">
+            <div className="flex items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+              <span className="hidden sm:block text-xs font-bold text-gray-400">第 {currentPage} 页 / 共 {Math.ceil(totalItems / pageSize)} 页</span>
+              <div className="flex space-x-2 w-full sm:w-auto">
                 <button
                   onClick={() => loadData(false, currentPage - 1, searchTerm)}
                   disabled={currentPage === 1}
-                  className="flex-1 max-w-24 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-200 transition-colors"
+                  className="flex-1 sm:flex-none px-4 py-2 bg-gray-100 rounded-xl font-bold text-sm disabled:opacity-30"
                 >
                   上一页
                 </button>
-                <div className="flex items-center space-x-1">
-                  {Array.from({ length: Math.min(5, Math.ceil(totalItems / pageSize)) }, (_, i) => {
-                    const pageNum = i + 1;
-                    const isActive = pageNum === currentPage;
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => loadData(false, pageNum, searchTerm)}
-                        className={`w-12 h-12 rounded-xl font-medium transition-colors ${
-                          isActive
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
-                  {Math.ceil(totalItems / pageSize) > 5 && (
-                    <>
-                      <span className="text-gray-400 self-center">...</span>
-                      <button
-                        onClick={() => loadData(false, Math.ceil(totalItems / pageSize), searchTerm)}
-                        className="w-12 h-12 rounded-xl font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
-                      >
-                        {Math.ceil(totalItems / pageSize)}
-                      </button>
-                    </>
-                  )}
-                </div>
                 <button
                   onClick={() => loadData(false, currentPage + 1, searchTerm)}
                   disabled={!hasMore}
-                  className="flex-1 max-w-24 py-3 bg-blue-600 text-white rounded-xl font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors"
+                  className="flex-1 sm:flex-none px-4 py-2 bg-blue-600 text-white rounded-xl font-bold text-sm disabled:opacity-30"
                 >
                   下一页
                 </button>
@@ -641,21 +423,29 @@ const InventoryView: React.FC = () => {
         </div>
       )}
 
-      {/* 新增物料弹窗 */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-end lg:items-center justify-center p-0 lg:p-4 bg-slate-900/60 backdrop-blur-md">
           <div className="bg-white w-full max-w-md rounded-t-[2rem] lg:rounded-[2.5rem] shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-300">
             <div className="p-6 bg-blue-600 text-white flex items-center justify-between">
-              <h3 className="font-black">新增物料</h3>
-              <button onClick={() => setIsAddModalOpen(false)} className="p-2 bg-white/10 rounded-lg hover:bg-white/20 transition-colors"><X size={20}/></button>
+              <h3 className="font-black text-lg">新增物料资产</h3>
+              <button onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-white/20 rounded-lg"><X size={20}/></button>
             </div>
-            <form onSubmit={handleAddSubmit} className="p-6 space-y-4">
-              <input required value={newMat.name} onChange={e => setNewMat({...newMat, name: e.target.value})} className="w-full px-5 py-4 bg-gray-50 rounded-xl font-bold border-none outline-none focus:ring-2 focus:ring-blue-500" placeholder="物料名称" />
-              <div className="grid grid-cols-2 gap-4">
-                <input required value={newMat.unit} onChange={e => setNewMat({...newMat, unit: e.target.value})} className="w-full px-5 py-4 bg-gray-50 rounded-xl font-bold border-none outline-none focus:ring-2 focus:ring-blue-500" placeholder="单位(kg/袋)" />
-                <input type="number" required value={newMat.initialStock} onChange={e => setNewMat({...newMat, initialStock: parseInt(e.target.value) || 0})} className="w-full px-5 py-4 bg-gray-50 rounded-xl font-bold border-none outline-none focus:ring-2 focus:ring-blue-500" placeholder="期初库存" />
+            <form onSubmit={handleAddSubmit} className="p-8 space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">物料名称</label>
+                <input required value={newMat.name} onChange={e => setNewMat({...newMat, name: e.target.value})} className="w-full px-5 py-4 bg-gray-50 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500" placeholder="例如：面粉、芝麻..." />
               </div>
-              <button type="submit" className="w-full py-4 bg-blue-600 text-white font-black rounded-xl shadow-lg hover:bg-blue-700 transition-colors">确认添加</button>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">物料单位</label>
+                  <input required value={newMat.unit} onChange={e => setNewMat({...newMat, unit: e.target.value})} className="w-full px-5 py-4 bg-gray-50 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500" placeholder="kg/袋" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">期初库存</label>
+                  <input type="number" required value={newMat.initialStock} onChange={e => setNewMat({...newMat, initialStock: parseInt(e.target.value) || 0})} className="w-full px-5 py-4 bg-gray-50 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500" placeholder="0" />
+                </div>
+              </div>
+              <button type="submit" className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl shadow-xl hover:bg-blue-700 transition-all active:scale-95">确认入库</button>
             </form>
           </div>
         </div>
