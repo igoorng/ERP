@@ -1,0 +1,11 @@
+name = "material-flow-pro"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB" # 必须为 DB，代码中以此名称调用
+database_name = "material-db"
+database_id = "erp"
+
+[[kv_namespaces]]
+binding = "CACHE_KV" # 必须为 CACHE_KV，代码中以此名称调用
+id = "erp"
