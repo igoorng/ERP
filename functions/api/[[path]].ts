@@ -224,6 +224,24 @@ export const onRequest: any = async (context: any) => {
       return json(results);
     }
 
+    if (path === '/users' && method === 'POST') {
+      const { id, username, password, role } = await request.json() as any;
+      await env.DB.prepare(`INSERT INTO "users" (id, username, password_hash, role) VALUES (?, ?, ?, ?)`).bind(id || crypto.randomUUID(), username, password, role).run();
+      return json({ success: true });
+    }
+
+    if (path === '/users' && method === 'DELETE') {
+      const id = url.searchParams.get('id');
+      await env.DB.prepare(`DELETE FROM "users" WHERE id = ?`).bind(id).run();
+      return json({ success: true });
+    }
+
+    if (path === '/users/password' && method === 'PUT') {
+      const { userId, newPassword } = await request.json() as any;
+      await env.DB.prepare(`UPDATE "users" SET password_hash = ? WHERE id = ?`).bind(newPassword, userId).run();
+      return json({ success: true });
+    }
+
     return json({ error: 'Endpoint not found' }, 404);
   } catch (e: any) {
     return json({ error: e.message }, 500);

@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/db';
 import { User } from '../types';
-import { Settings, Shield, Monitor, Save, Loader2, CheckCircle2, UserPlus, Users, Key, Trash2, ShieldCheck, X, Zap, RefreshCw } from 'lucide-react';
+import { Settings, Shield, Monitor, Save, Loader2, CheckCircle2, UserPlus, Users, Key, Trash2, ShieldCheck, X, Zap, RefreshCw, Lock } from 'lucide-react';
 
 const SettingsView: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -17,7 +16,15 @@ const SettingsView: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [newUser, setNewUser] = useState({ username: '', password: '', role: 'user' as 'admin' | 'user' });
+  
+  // 个人密码修改状态
+  const [personalPwd, setPersonalPwd] = useState({ new: '', confirm: '' });
+  const [personalPwdLoading, setPersonalPwdLoading] = useState(false);
+  const [personalPwdSuccess, setPersonalPwdSuccess] = useState(false);
+
+  // 管理员修改他人密码状态
   const [editingPasswordId, setEditingPasswordId] = useState<string | null>(null);
+  const [targetUserPwd, setTargetUserPwd] = useState('');
 
   const currentUser = db.getCurrentUser();
 
@@ -67,6 +74,43 @@ const SettingsView: React.FC = () => {
     }
   };
 
+  const handleChangePersonalPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser) return;
+    if (personalPwd.new !== personalPwd.confirm) {
+      alert('两次输入的密码不一致！');
+      return;
+    }
+    if (!personalPwd.new) {
+      alert('密码不能为空！');
+      return;
+    }
+
+    setPersonalPwdLoading(true);
+    try {
+      await db.updateUserPassword(currentUser.id, personalPwd.new);
+      setPersonalPwdSuccess(true);
+      setPersonalPwd({ new: '', confirm: '' });
+      setTimeout(() => setPersonalPwdSuccess(false), 3000);
+    } catch (e) {
+      alert('修改密码失败');
+    } finally {
+      setPersonalPwdLoading(false);
+    }
+  };
+
+  const handleUpdateUserPassword = async (userId: string) => {
+    if (!targetUserPwd) return;
+    try {
+      await db.updateUserPassword(userId, targetUserPwd);
+      setEditingPasswordId(null);
+      setTargetUserPwd('');
+      alert('密码已更新');
+    } catch (e) {
+      alert('操作失败');
+    }
+  };
+
   if (loading) {
     return (
       <div className="h-96 flex flex-col items-center justify-center text-gray-400">
@@ -94,6 +138,48 @@ const SettingsView: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 gap-6">
+        {/* 账户安全设置 (修改自己的密码) */}
+        <section className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm">
+          <div className="flex items-center space-x-3 mb-6">
+            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl"><Lock size={24} /></div>
+            <div>
+              <h3 className="font-black text-gray-900">个人安全中心</h3>
+              <p className="text-[10px] text-gray-400 font-bold">修改当前登录账号的授权密码</p>
+            </div>
+          </div>
+          <form onSubmit={handleChangePersonalPassword} className="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">新密码</label>
+              <input 
+                type="password" 
+                value={personalPwd.new} 
+                onChange={e => setPersonalPwd({...personalPwd, new: e.target.value})} 
+                className="w-full px-5 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 font-bold outline-none" 
+                placeholder="输入新密码"
+              />
+            </div>
+            <div className="space-y-2 relative">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">确认新密码</label>
+              <div className="flex gap-2">
+                <input 
+                  type="password" 
+                  value={personalPwd.confirm} 
+                  onChange={e => setPersonalPwd({...personalPwd, confirm: e.target.value})} 
+                  className="flex-1 px-5 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 font-bold outline-none" 
+                  placeholder="再次输入以确认"
+                />
+                <button 
+                  type="submit"
+                  disabled={personalPwdLoading}
+                  className={`px-6 py-4 rounded-2xl font-black transition-all flex items-center gap-2 ${personalPwdSuccess ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white hover:bg-slate-800'}`}
+                >
+                  {personalPwdLoading ? <Loader2 className="animate-spin" size={18} /> : (personalPwdSuccess ? <CheckCircle2 size={18} /> : <span>更新密码</span>)}
+                </button>
+              </div>
+            </div>
+          </form>
+        </section>
+
         {/* 系统基础设置 */}
         <section className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm">
           <div className="flex items-center space-x-3 mb-6">
@@ -170,9 +256,30 @@ const SettingsView: React.FC = () => {
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{u.role === 'admin' ? '系统管理员' : '普通操作员'}</p>
                   </div>
                 </div>
-                {currentUser?.role === 'admin' && u.id !== currentUser.id && (
-                  <button onClick={() => db.deleteUser(u.id).then(fetchData)} className="p-2 text-gray-400 hover:text-red-500"><Trash2 size={18} /></button>
-                )}
+                <div className="flex items-center space-x-2">
+                  {currentUser?.role === 'admin' && (
+                    <>
+                      {editingPasswordId === u.id ? (
+                        <div className="flex items-center gap-1 animate-in slide-in-from-right-2">
+                          <input 
+                            type="password" 
+                            className="px-2 py-1 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:ring-1 focus:ring-purple-500" 
+                            placeholder="新密码"
+                            value={targetUserPwd}
+                            onChange={e => setTargetUserPwd(e.target.value)}
+                          />
+                          <button onClick={() => handleUpdateUserPassword(u.id)} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"><CheckCircle2 size={16}/></button>
+                          <button onClick={() => setEditingPasswordId(null)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg"><X size={16}/></button>
+                        </div>
+                      ) : (
+                        <button onClick={() => setEditingPasswordId(u.id)} className="p-2 text-gray-400 hover:text-blue-600" title="修改此用户密码"><Key size={18} /></button>
+                      )}
+                    </>
+                  )}
+                  {currentUser?.role === 'admin' && u.id !== currentUser.id && (
+                    <button onClick={() => db.deleteUser(u.id).then(fetchData)} className="p-2 text-gray-400 hover:text-red-500"><Trash2 size={18} /></button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
