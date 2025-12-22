@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from '../services/db';
 import { Material, DailyInventory } from '../types';
-import { Plus, Search, Trash2, X, Calendar as CalendarIcon, Loader2, FileUp, ArrowRight, CheckSquare, Square } from 'lucide-react';
+import { Plus, Search, Trash2, X, Calendar as CalendarIcon, Loader2, FileUp, ArrowRight, CheckSquare, Square, AlertCircle } from 'lucide-react';
 
 declare const XLSX: any;
 
@@ -114,8 +114,8 @@ const InventoryView: React.FC = () => {
       setIsAddModalOpen(false);
       setNewMat({ name: '', unit: '', baseUnit: '', initialStock: 0 });
       await loadData(true, currentPage, searchTerm);
-    } catch (e) {
-      alert('添加失败');
+    } catch (e: any) {
+      alert(`添加失败: ${e.message || '未知错误'}`);
     } finally {
       setLoading(false);
     }
@@ -172,17 +172,37 @@ const InventoryView: React.FC = () => {
         const ws = wb.Sheets[wb.SheetNames[0]];
         const data = XLSX.utils.sheet_to_json(ws);
         setLoading(true);
+        let successCount = 0;
+        let failCount = 0;
+        let lastError = '';
+
         for (const row of (data as any[])) {
           const name = row['物料名称'] || row['名称'];
           const unit = row['物料单位'] || row['单位'];
           const baseUnit = row['基本计量单位'] || row['基本单位'] || unit;
           const stock = Number(row['昨日库存'] || row['期初库存'] || 0);
-          if (name && unit) await db.addMaterial(String(name), String(unit), String(baseUnit), stock, date);
+          
+          if (name && unit) {
+            try {
+              await db.addMaterial(String(name), String(unit), String(baseUnit), stock, date);
+              successCount++;
+            } catch (err: any) {
+              failCount++;
+              lastError = err.message;
+            }
+          }
         }
+        
+        if (failCount > 0) {
+          alert(`导入部分完成。成功: ${successCount}, 失败: ${failCount}。\n最后一条错误: ${lastError}\n提示: 如果错误提示缺少列，请退出重新登录或检查数据库结构。`);
+        } else {
+          alert(`导入成功！共导入 ${successCount} 项物料。`);
+        }
+        
         await loadData(true);
         if (fileInputRef.current) fileInputRef.current.value = '';
-      } catch (err) {
-        alert('导入失败');
+      } catch (err: any) {
+        alert(`导入文件解析失败: ${err.message}`);
       } finally {
         setLoading(false);
       }

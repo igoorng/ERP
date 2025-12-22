@@ -56,10 +56,12 @@ export const onRequest: any = async (context: any) => {
         await env.DB.prepare(sql).run();
       }
       
-      // 动态列检查：如果 base_unit 不存在则添加（用于平滑升级）
+      // 动态列检查：如果 base_unit 不存在则添加
       try {
         await env.DB.prepare(`ALTER TABLE "materials" ADD COLUMN "base_unit" TEXT`).run();
-      } catch (e) {}
+      } catch (e) {
+        // 忽略列已存在的错误
+      }
 
       // 插入默认数据
       await env.DB.prepare(`INSERT OR IGNORE INTO "users" ("id", "username", "password_hash", "role") VALUES (?, ?, ?, ?)`).bind('admin-id', 'admin', 'admin', 'admin').run();
@@ -118,7 +120,21 @@ export const onRequest: any = async (context: any) => {
     if (path === '/materials' && method === 'POST') {
       const { name, unit, baseUnit, initialStock, date, timestamp } = await request.json() as any;
       const id = crypto.randomUUID();
-      await env.DB.prepare(`INSERT INTO "materials" (id, name, unit, base_unit, created_at) VALUES (?, ?, ?, ?, ?)`).bind(id, name, unit, baseUnit || unit, timestamp).run();
+      try {
+        await env.DB.prepare(`INSERT INTO "materials" (id, name, unit, base_unit, created_at) VALUES (?, ?, ?, ?, ?)`).bind(id, name, unit, baseUnit || unit, timestamp).run();
+      } catch (e: any) {
+        // 容错处理：如果是因为缺少 base_unit 列导致的失败，尝试在线添加列并重试一次
+        if (e.message.includes('base_unit') || e.message.includes('has no column')) {
+          try {
+            await env.DB.prepare(`ALTER TABLE "materials" ADD COLUMN "base_unit" TEXT`).run();
+            await env.DB.prepare(`INSERT INTO "materials" (id, name, unit, base_unit, created_at) VALUES (?, ?, ?, ?, ?)`).bind(id, name, unit, baseUnit || unit, timestamp).run();
+          } catch (retryError: any) {
+            return json({ error: `重试失败: ${retryError.message}` }, 500);
+          }
+        } else {
+          return json({ error: e.message }, 500);
+        }
+      }
       await env.DB.prepare(`INSERT INTO "inventory" (id, material_id, date, opening_stock, today_inbound, workshop_outbound, store_outbound, remaining_stock) VALUES (?, ?, ?, ?, 0, 0, 0, ?)`).bind(crypto.randomUUID(), id, date, initialStock, initialStock).run();
       if (cache) await cache.deletePattern('mf:materials:');
       return json({ id });
