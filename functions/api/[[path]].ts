@@ -146,6 +146,18 @@ export const onRequest: any = async (context: any) => {
     }
 
     // --- 库存管理 API ---
+    if (path === '/inventory' && method === 'GET') {
+      const date = url.searchParams.get('date');
+      if (!date) return json({ error: 'Missing date' }, 400);
+      
+      const { results } = await env.DB.prepare(`
+        SELECT id, material_id AS materialId, date, opening_stock AS openingStock, today_inbound AS todayInbound, 
+               workshop_outbound AS workshopOutbound, store_outbound AS storeOutbound, remaining_stock AS remainingStock 
+        FROM "inventory" WHERE date = ?
+      `).bind(date).all();
+      return json(results);
+    }
+
     if (path === '/inventory/paginated' && method === 'GET') {
       const date = url.searchParams.get('date');
       const page = parseInt(url.searchParams.get('page') || '1');
@@ -190,6 +202,33 @@ export const onRequest: any = async (context: any) => {
       return json({ success: true });
     }
 
+    // --- 统计 API ---
+    if (path === '/stats' && method === 'GET') {
+      const start = url.searchParams.get('start');
+      const end = url.searchParams.get('end');
+      if (!start || !end) return json({ error: 'Missing start or end date' }, 400);
+
+      const { results } = await env.DB.prepare(`
+        SELECT 
+          m.name,
+          SUM(i.today_inbound) as totalIn,
+          SUM(i.workshop_outbound) as totalWorkshop,
+          SUM(i.store_outbound) as totalStore,
+          (
+            SELECT remaining_stock 
+            FROM "inventory" 
+            WHERE material_id = i.material_id AND date <= ? 
+            ORDER BY date DESC LIMIT 1
+          ) as currentStock
+        FROM "inventory" i
+        JOIN "materials" m ON i.material_id = m.id
+        WHERE i.date >= ? AND i.date <= ?
+        GROUP BY i.material_id, m.name
+      `).bind(end, start, end).all();
+
+      return json(results);
+    }
+
     if (path === '/settings' && method === 'GET') {
       const { results } = await env.DB.prepare('SELECT * FROM "settings"').all();
       return json(results.reduce((acc: any, curr: any) => ({ ...acc, [curr.key]: curr.value }), {}));
@@ -217,6 +256,33 @@ export const onRequest: any = async (context: any) => {
     if (path === '/users' && method === 'GET') {
       const { results } = await env.DB.prepare('SELECT id, username, role FROM "users"').all();
       return json(results);
+    }
+
+    if (path === '/users' && method === 'POST') {
+      const user = await request.json() as any;
+      const id = crypto.randomUUID();
+      await env.DB.prepare(`INSERT INTO "users" (id, username, password_hash, role) VALUES (?, ?, ?, ?)`)
+        .bind(id, user.username, user.password, user.role).run();
+      return json({ id, username: user.username, role: user.role });
+    }
+
+    if (path === '/users' && method === 'DELETE') {
+      const id = url.searchParams.get('id');
+      if (!id) return json({ error: 'ID required' }, 400);
+      await env.DB.prepare('DELETE FROM "users" WHERE id = ?').bind(id).run();
+      return json({ success: true });
+    }
+
+    if (path === '/users/password' && method === 'PUT') {
+      const { userId, newPassword } = await request.json() as any;
+      await env.DB.prepare('UPDATE "users" SET password_hash = ? WHERE id = ?')
+        .bind(newPassword, userId).run();
+      return json({ success: true });
+    }
+
+    if (path === '/cache/clear' && method === 'POST') {
+      if (cache) await cache.deletePattern('mf:');
+      return json({ success: true });
     }
 
     return json({ error: 'Not found' }, 404);
