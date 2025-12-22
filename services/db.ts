@@ -1,7 +1,6 @@
 
 import { Material, DailyInventory, AuditLog, User } from '../types';
 import { withPerformanceMonitoring } from './monitoring';
-import { getKVService } from './kv';
 
 const API_BASE = '/api';
 
@@ -24,183 +23,59 @@ interface CacheItem<T> {
   expiry: number;
 }
 
-// 混合缓存系统：内存缓存 + KV 缓存
-class HybridDataCache {
-  private memoryCache = new Map<string, CacheItem<any>>();
-  private readonly DEFAULT_TTL = 30 * 60 * 1000; // 30分钟缓存
+class DataCache {
+  private cache = new Map<string, CacheItem<any>>();
+  private readonly DEFAULT_TTL = 30 * 60 * 1000; // 30分钟缓存（延长缓存时间）
   private readonly STATIC_DATA_TTL = 2 * 60 * 60 * 1000; // 静态数据2小时缓存
-  private kvService: any = null;
 
-  private kvInitialized = false;
-
-  constructor() {
-    // 延迟初始化 KV 服务（异步）
-    this.initKV().catch(error => {
-      console.warn('KV 初始化失败:', error);
-    });
-  }
-
-  private async initKV(): Promise<void> {
-    if (this.kvInitialized) return;
-    
-    try {
-      // 在 Pages Functions 中，KV 绑定通过上下文传递
-      // 这里需要从环境中获取或者等待传入
-      if (typeof window !== 'undefined') {
-        // 浏览器环境，不使用 KV
-        this.kvInitialized = true;
-        return;
-      }
-      this.kvService = getKVService();
-      this.kvInitialized = true;
-    } catch (error) {
-      this.kvInitialized = true;
-      console.warn('KV 服务不可用，仅使用内存缓存:', error);
-    }
-  }
-
-  private async getKVService(): Promise<any> {
-    if (!this.kvInitialized) {
-      await this.initKV();
-    }
-    
-    if (!this.kvService) {
-      try {
-        this.kvService = getKVService();
-      } catch (error) {
-        // 在浏览器环境或 KV 不可用时，使用 null（仅内存缓存）
-        console.warn('KV 服务不可用，使用内存缓存');
-        return null;
-      }
-    }
-    return this.kvService;
-  }
-
-  async set<T>(key: string, data: T, ttl: number = this.DEFAULT_TTL): Promise<void> {
-    // 设置内存缓存
-    this.memoryCache.set(key, {
+  set<T>(key: string, data: T, ttl: number = this.DEFAULT_TTL): void {
+    this.cache.set(key, {
       data,
       timestamp: Date.now(),
       expiry: Date.now() + ttl
     });
-
-    // 同时设置 KV 缓存（异步执行）
-    try {
-      const kv = await this.getKVService();
-      if (kv) {
-        await kv.set(key, data, Math.floor(ttl / 1000)); // KV 使用秒作为 TTL
-      }
-    } catch (error) {
-      console.warn('KV 缓存设置失败:', error);
-    }
   }
 
-  async setStatic<T>(key: string, data: T): Promise<void> {
-    await this.set(key, data, this.STATIC_DATA_TTL);
+  // 为静态数据设置更长的缓存时间
+  setStatic<T>(key: string, data: T): void {
+    this.set(key, data, this.STATIC_DATA_TTL);
   }
 
-  async get<T>(key: string): Promise<T | null> {
-    // 首先检查内存缓存
-    const memoryItem = this.memoryCache.get(key);
-    if (memoryItem) {
-      if (Date.now() <= memoryItem.expiry) {
-        return memoryItem.data;
-      }
-      // 内存缓存过期，删除
-      this.memoryCache.delete(key);
+  get<T>(key: string): T | null {
+    const item = this.cache.get(key);
+    if (!item) return null;
+    
+    if (Date.now() > item.expiry) {
+      this.cache.delete(key);
+      return null;
     }
-
-    // 内存缓存未命中，检查 KV 缓存
-    try {
-      const kv = await this.getKVService();
-      if (kv) {
-        const kvData = await kv.get<string>(key);
-        if (kvData !== null) {
-          // 解析 JSON 数据
-          const parsedData = JSON.parse(kvData) as T;
-          
-          // 将 KV 数据同步到内存缓存
-          this.memoryCache.set(key, {
-            data: parsedData,
-            timestamp: Date.now(),
-            expiry: Date.now() + this.DEFAULT_TTL
-          });
-          return parsedData;
-        }
-      }
-    } catch (error) {
-      console.warn('KV 缓存读取失败:', error);
-    }
-
-    return null;
+    
+    return item.data;
   }
 
-  async clear(): Promise<void> {
-    // 清除内存缓存
-    this.memoryCache.clear();
-
-    // 清除 KV 缓存
-    try {
-      const kv = await this.getKVService();
-      if (kv) {
-        await kv.clear();
-      }
-    } catch (error) {
-      console.warn('KV 缓存清除失败:', error);
-    }
+  clear(): void {
+    this.cache.clear();
   }
 
-  async delete(key: string): Promise<void> {
-    // 删除内存缓存
-    this.memoryCache.delete(key);
-
-    // 删除 KV 缓存
-    try {
-      const kv = await this.getKVService();
-      if (kv) {
-        await kv.delete(key);
-      }
-    } catch (error) {
-      console.warn('KV 缓存删除失败:', error);
-    }
+  delete(key: string): void {
+    this.cache.delete(key);
   }
 
-  // 清理过期的内存缓存
+  // 清理过期缓存
   cleanup(): void {
     const now = Date.now();
-    for (const [key, item] of this.memoryCache.entries()) {
+    for (const [key, item] of this.cache.entries()) {
       if (now > item.expiry) {
-        this.memoryCache.delete(key);
+        this.cache.delete(key);
       }
     }
   }
-
-  // 获取缓存统计信息
-  getStats() {
-    return {
-      memoryCacheSize: this.memoryCache.size,
-      memoryCacheItems: Array.from(this.memoryCache.keys())
-    };
-  }
 }
 
-const dataCache = new HybridDataCache();
-
-let cleanupInterval: NodeJS.Timeout | null = null;
+const dataCache = new DataCache();
 
 // 定期清理过期缓存
-if (typeof window === 'undefined') {
-  // 只在服务器端设置定时器
-  cleanupInterval = setInterval(() => dataCache.cleanup(), 60000); // 每分钟清理一次
-}
-
-// 导出清理函数供应用卸载时使用
-export const cleanupDataCache = (): void => {
-  if (cleanupInterval) {
-    clearInterval(cleanupInterval);
-    cleanupInterval = null;
-  }
-};
+setInterval(() => dataCache.cleanup(), 60000); // 每分钟清理一次
 
 // 缓存预热功能
 export const preloadCommonData = async (): Promise<void> => {
@@ -348,25 +223,25 @@ export const db = {
   },
 
   // 缓存管理
-  clearCache: async (): Promise<void> => {
-    await dataCache.clear();
+  clearCache: (): void => {
+    dataCache.clear();
     // 通知服务器清除KV缓存
     fetch(`${API_BASE}/cache/clear`, { method: 'POST' }).catch(() => {});
   },
 
-  clearCacheForDate: async (date: string): Promise<void> => {
-    await dataCache.delete(`materials_${date}`);
-    await dataCache.delete('materials_current');
-    await dataCache.delete(`inventory_${date}`);
+  clearCacheForDate: (date: string): void => {
+    dataCache.delete(`materials_${date}`);
+    dataCache.delete('materials_current');
+    dataCache.delete(`inventory_${date}`);
     
     // 清除分页缓存（使用模糊匹配）
     const keysToDelete: string[] = [];
-    for (const key of dataCache.getStats().memoryCacheItems) {
+    for (const key of dataCache['cache'].keys()) {
       if (key.includes('materials_paginated_') || key.includes('inventory_paginated_')) {
         keysToDelete.push(key);
       }
     }
-    await Promise.all(keysToDelete.map(key => dataCache.delete(key)));
+    keysToDelete.forEach(key => dataCache.delete(key));
     
     // 通知服务器清除相关KV缓存
     fetch(`${API_BASE}/cache/clear`, { 
@@ -382,7 +257,7 @@ export const db = {
     
     // 尝试从缓存获取数据
     if (!forceRefresh) {
-      const cached = await dataCache.get<Material[]>(cacheKey);
+      const cached = dataCache.get<Material[]>(cacheKey);
       if (cached) return cached;
     }
     
@@ -404,7 +279,7 @@ export const db = {
     const data = await response.json();
     
     // 缓存数据（使用更长的TTL，因为后端有KV缓存）
-    await dataCache.set(cacheKey, data, CACHE_CONFIG.STATIC_DATA_TTL);
+    dataCache.set(cacheKey, data, CACHE_CONFIG.STATIC_DATA_TTL);
     
     return withPerformanceMonitoring(endpoint, () => Promise.resolve(data), false);
   },
@@ -415,7 +290,7 @@ export const db = {
     
     // 尝试从缓存获取数据
     if (!forceRefresh) {
-      const cached = await dataCache.get<{materials: Material[], total: number, hasMore: boolean}>(cacheKey);
+      const cached = dataCache.get<{materials: Material[], total: number, hasMore: boolean}>(cacheKey);
       if (cached) return cached;
     }
     
@@ -446,7 +321,7 @@ export const db = {
     const data = await response.json();
     
     // 缓存数据（使用分页TTL）
-    await dataCache.set(cacheKey, data, CACHE_CONFIG.PAGINATION_TTL);
+    dataCache.set(cacheKey, data, CACHE_CONFIG.PAGINATION_TTL);
     return data;
   },
 
@@ -468,9 +343,9 @@ export const db = {
     await db.logAction('CREATE', `新增物料: ${name} (期初: ${initialStock})`);
     
     // 清除相关缓存
-    await dataCache.delete(`materials_${date}`);
-    await dataCache.delete('materials_current');
-    await dataCache.delete(`inventory_${date}`);
+    dataCache.delete(`materials_${date}`);
+    dataCache.delete('materials_current');
+    dataCache.delete(`inventory_${date}`);
     
     return result;
   },
@@ -485,9 +360,9 @@ export const db = {
     await db.logAction('DELETE', `删除物料: ${ids.length}项`);
     
     // 清除相关缓存
-    await dataCache.delete(`materials_${date}`);
-    await dataCache.delete('materials_current');
-    await dataCache.delete(`inventory_${date}`);
+    dataCache.delete(`materials_${date}`);
+    dataCache.delete('materials_current');
+    dataCache.delete(`inventory_${date}`);
   },
 
   deleteMaterial: async (id: string, date: string): Promise<void> => {
@@ -500,7 +375,7 @@ export const db = {
     
     // 尝试从缓存获取数据
     if (!forceRefresh) {
-      const cached = await dataCache.get<DailyInventory[]>(cacheKey);
+      const cached = dataCache.get<DailyInventory[]>(cacheKey);
       if (cached) return cached;
     }
     
@@ -514,7 +389,7 @@ export const db = {
     const data = await response.json();
     
     // 缓存数据（使用查询TTL）
-    await dataCache.set(cacheKey, data, CACHE_CONFIG.QUERY_DATA_TTL);
+    dataCache.set(cacheKey, data, CACHE_CONFIG.QUERY_DATA_TTL);
     return data;
   },
 
@@ -524,7 +399,7 @@ export const db = {
     
     // 尝试从缓存获取数据
     if (!forceRefresh) {
-      const cached = await dataCache.get<{inventory: DailyInventory[], total: number, hasMore: boolean}>(cacheKey);
+      const cached = dataCache.get<{inventory: DailyInventory[], total: number, hasMore: boolean}>(cacheKey);
       if (cached) return cached;
     }
     
@@ -550,7 +425,7 @@ export const db = {
     const data = await response.json();
     
     // 缓存数据（使用分页TTL）
-    await dataCache.set(cacheKey, data, CACHE_CONFIG.PAGINATION_TTL);
+    dataCache.set(cacheKey, data, CACHE_CONFIG.PAGINATION_TTL);
     return data;
   },
 
@@ -562,7 +437,7 @@ export const db = {
     });
     
     // 清除相关缓存
-    await dataCache.delete(`inventory_${record.date}`);
+    dataCache.delete(`inventory_${record.date}`);
   },
 
   initializeDate: async (date: string): Promise<void> => {
