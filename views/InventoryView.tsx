@@ -223,7 +223,7 @@ const InventoryView: React.FC = () => {
                 className="flex items-center space-x-2 px-4 py-3 bg-red-50 text-red-600 rounded-xl font-bold hover:bg-red-100 transition-colors animate-in zoom-in-95"
               >
                 <Trash2 size={18} />
-                <span className="hidden sm:inline">删除({selectedIds.length})</span>
+                <span className="hidden sm:inline">批量删除({selectedIds.length})</span>
               </button>
             )}
 
@@ -271,7 +271,7 @@ const InventoryView: React.FC = () => {
                     </button>
                   </th>
                   <th className="px-4 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">物料名称</th>
-                  <th className="px-4 py-5 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">基本单位</th>
+                  <th className="px-4 py-5 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">计量单位</th>
                   <th className="px-4 py-5 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">物料单位</th>
                   <th className="px-6 py-5 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">昨日库存</th>
                   <th className="px-6 py-5 text-center text-[10px] font-black text-blue-600 uppercase tracking-widest">今日入库</th>
@@ -364,8 +364,8 @@ const InventoryView: React.FC = () => {
                       <div>
                         <h4 className="font-black text-gray-900 leading-tight">{mat?.name || '...'}</h4>
                         <div className="flex flex-wrap items-center gap-2 mt-1">
-                          <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">单位: {mat?.unit || '-'}</span>
-                          <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">基本单位: {mat?.baseUnit || '-'}</span>
+                          <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">基本计量单位: {mat?.baseUnit || '-'}</span>
+                          <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">单位描述: {mat?.unit || '-'}</span> 
                           <span className="text-[10px] font-black text-gray-400">昨存: {item.openingStock}</span>
                         </div>
                       </div>
@@ -379,15 +379,15 @@ const InventoryView: React.FC = () => {
 
                   <div className="grid grid-cols-3 gap-2 mb-4">
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black text-blue-400 uppercase text-center block">入库</label>
+                      <label className="text-[12px] font-black text-blue-400 uppercase text-center block">今日入库</label>
                       <input type="number" disabled={!isToday} value={item.todayInbound || ''} placeholder="0" onChange={(e) => handleInputChange(item.materialId, 'todayInbound', e.target.value)} className="w-full py-3 bg-blue-50/30 rounded-xl text-center font-black text-blue-700 outline-none" />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black text-orange-400 uppercase text-center block">车间</label>
+                      <label className="text-[12px] font-black text-orange-400 uppercase text-center block">车间出库</label>
                       <input type="number" disabled={!isToday} value={item.workshopOutbound || ''} placeholder="0" onChange={(e) => handleInputChange(item.materialId, 'workshopOutbound', e.target.value)} className="w-full py-3 bg-orange-50/30 rounded-xl text-center font-black text-orange-700 outline-none" />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black text-purple-400 uppercase text-center block">店面</label>
+                      <label className="text-[12px] font-black text-purple-400 uppercase text-center block">店面出库</label>
                       <input type="number" disabled={!isToday} value={item.storeOutbound || ''} placeholder="0" onChange={(e) => handleInputChange(item.materialId, 'storeOutbound', e.target.value)} className="w-full py-3 bg-purple-50/30 rounded-xl text-center font-black text-purple-700 outline-none" />
                     </div>
                   </div>
@@ -439,11 +439,11 @@ const InventoryView: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">物料单位</label>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">单位描述</label>
                   <input required value={newMat.unit} onChange={e => setNewMat({...newMat, unit: e.target.value})} className="w-full px-5 py-4 bg-gray-50 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500" placeholder="kg/袋" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">基本单位</label>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">计量单位</label>
                   <input required value={newMat.baseUnit} onChange={e => setNewMat({...newMat, baseUnit: e.target.value})} className="w-full px-5 py-4 bg-indigo-50/50 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-indigo-500" placeholder="标准计量单位" />
                 </div>
               </div>
