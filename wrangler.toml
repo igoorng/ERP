@@ -4,8 +4,9 @@ pages_build_output_dir = "dist"
 [[d1_databases]]
 binding = "DB" # 必须为 DB，代码中以此名称调用
 database_name = "material-db"
-database_id = "erp"
+database_id = "51ac348b-4282-4489-bd37-7514921a3759"
 
 [[kv_namespaces]]
 binding = "CACHE_KV" # 必须为 CACHE_KV，代码中以此名称调用
-id = "erp"
+id = "c69b9faf60374fada880b07443149572"
+
