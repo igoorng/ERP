@@ -325,9 +325,16 @@ const InventoryView: React.FC = () => {
                     </button>
                     <div>
                       <h4 className="font-black text-gray-900 text-lg leading-tight">{mat?.name}</h4>
-                      <div className="flex items-center space-x-2 mt-1">
-                        <span className="text-[10px] font-black bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-md uppercase">{mat?.baseUnit}</span>
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">{mat?.unit}</span>
+                      {/* 参数名称展示区 */}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
+                        <div className="flex items-center space-x-1">
+                          <span className="text-[9px] font-black text-gray-400 uppercase tracking-tighter">计量单位:</span>
+                          <span className="text-[10px] font-black bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-md uppercase">{mat?.baseUnit}</span>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <span className="text-[9px] font-black text-gray-400 uppercase tracking-tighter">物料单位:</span>
+                          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tight">{mat?.unit}</span>
+                        </div>
                       </div>
                     </div>
                   </div>

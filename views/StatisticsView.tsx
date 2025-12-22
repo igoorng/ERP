@@ -119,7 +119,7 @@ const StatisticsView: React.FC = () => {
                     <th className="px-6 py-5 text-center">入库</th>
                     <th className="px-6 py-5 text-center">车间出库</th>
                     <th className="px-6 py-5 text-center">店面出库</th>
-                    <th className="px-8 py-5 text-center bg-blue-50/50 text-blue-800">当前剩余</th>
+                    <th className="px-8 py-5 text-center bg-blue-50/50 text-blue-800">当前库存</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -143,13 +143,13 @@ const StatisticsView: React.FC = () => {
                   <div>
                     <h5 className="font-black text-gray-900 text-sm">{item.name}</h5>
                     <div className="flex items-center space-x-2 mt-1">
-                      <span className="text-[9px] font-bold text-blue-500">入:{item.totalIn}</span>
-                      <span className="text-[9px] font-bold text-orange-500">车:{item.totalWorkshop}</span>
-                      <span className="text-[9px] font-bold text-purple-500">店:{item.totalStore}</span>
+                      <span className="text-[9px] font-bold text-blue-500">入库:{item.totalIn}</span>
+                      <span className="text-[9px] font-bold text-orange-500">车间出库:{item.totalWorkshop}</span>
+                      <span className="text-[9px] font-bold text-purple-500">店面出库:{item.totalStore}</span>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs font-black text-gray-400 uppercase">期末结余</p>
+                    <p className="text-xs font-black text-gray-400 uppercase">库存</p>
                     <p className="text-xl font-black text-blue-900 leading-none mt-1">{item.currentStock}</p>
                   </div>
                 </div>
